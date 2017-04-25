@@ -3,17 +3,22 @@
 /* ----------------------------------------------------- */
 /*  CONSTANTES											 */
 /* ----------------------------------------------------- */
-#define MAXUTILIZADOR	30								// Max chars do utilizador
-#define MAXMENSAGEM		100								// Max chars da mensagem
-#define MAXJOGADORES	4
-#define TIMEOUTPIPE		1000
-#define TIMEOUTVAGA		30000
-#define SIZEMENSAGEM	sizeof(Msg)
-#define NOMEMEMORIA		TEXT("SharedMem")					// Memoria Partilhada
-#define SEMAFORO_MEM	TEXT("SemaforoSharedMem")
-#define EVENTO_MEM		TEXT("EventoSharedMem")
-#define PIPE_ATENDE		TEXT("\\\\.\\pipe\\atende")		// Servidor para o cliente
-
+#define SIZE_USERNAME		30									// Max chars do utilizador
+#define MAXJOGADORES		4									// Max jogadores permitido
+#define SIZEMENSAGEM		sizeof(Msg)							// Tamanho da estrutura Msg
+#define SIZE_MEM_GERAL		sizeof(int)*2+sizeof(ConfigInicial)	// Tamanho da Memoria Partilhada Geral (2*"int" para o estado do Jogo e numero de clientes, "ConfigInicial" com os dados modificados pelo criador de jogo)
+#define NOME_MEM_GERAL		TEXT("SharedMemGeral")				// Nome da Memoria Partilhada Geral
+#define SEM_MEM_GERAL		TEXT("SemaforoSharedMemGeral")		// Nome do Semaforo da Memoria Partilha Geral
+#define EVNT_MEM_GERAL		TEXT("EventoSharedMemGeral")		// Nome do Evento da Memoria Partilha Geral
+#define NOME_MEM_DINAMICA	TEXT("SharedMemDinamica")			// Nome da Memoria Partilhada Dinamica
+#define SEM_MEM_DINAMICA	TEXT("SemaforoSharedMemDinamica")	// Nome do Semaforo da Memoria Partilha Dinamica
+#define EVNT_MEM_DINAMICA	TEXT("EventoSharedMemDinamica")		// Nome do Evento da Memoria Partilha Dinamica
+//Estados de Jogo
+#define CRIACAOJOGO		1
+#define ASSOCIACAOJOGO	2
+#define DECORRERJOGO	3
+#define FINALJOGO		4
+//Movimentos das Serpentes
 #define CIMA			1
 #define BAIXO			2
 #define ESQUERDA		3
@@ -23,6 +28,7 @@
 #define JUNTARJOGO		6
 #define ACTUALIZAMAPA	7
 
+//Objectos
 #define ALIMENTO		1 
 #define GELO			2
 #define GRANADA			3 
@@ -37,12 +43,12 @@
 /*  TIPOS												 */
 /* ----------------------------------------------------- */
 typedef struct {
-	TCHAR utilizador[MAXUTILIZADOR];
+	TCHAR username[SIZE_USERNAME];
 	int codigoMsg;
 }Msg;
 
 typedef struct {
-	char utilizador[MAXUTILIZADOR];
+	char username[SIZE_USERNAME];
 	int pontuacao;
 	int direcao;
 	int ultimoSegmento;

@@ -28,7 +28,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 	_setmode(_fileno(stdout), _O_WTEXT);
 #endif
 
-	_tcscpy_s(aux.utilizador, sizeof(aux.utilizador), TEXT("Server"));
+	_tcscpy_s(aux.username, sizeof(aux.username), TEXT("Server"));
 	aux.codigoMsg = ACTUALIZAMAPA;	
 
 	hEventoMemoria = CreateEvent(NULL, TRUE, FALSE, EVENTO_MEM);
@@ -41,7 +41,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 	
 	
 	partilha->codigoMsg = aux.codigoMsg;
-	_tcscpy_s(partilha->utilizador, MAXUTILIZADOR, aux.utilizador);
+	_tcscpy_s(partilha->username, SIZE_USERNAME, aux.username);
 	_gettch();
 
 	CloseHandle(hMemoria);
