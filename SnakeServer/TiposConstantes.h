@@ -66,4 +66,10 @@ typedef struct {
 	int S;			//Segundos que fica no mapa
 }Objecto;
 
+typedef struct {
+	int numClientes;
+	int estadoJogo;
+	ConfigInicial config;
+}MemGeral;
+
 
