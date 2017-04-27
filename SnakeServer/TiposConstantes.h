@@ -4,9 +4,10 @@
 /*  CONSTANTES											 */
 /* ----------------------------------------------------- */
 #define SIZE_USERNAME		30									// Max chars do utilizador
+#define MAXCLIENTES			10									// Maximo de Clientes 
 #define MAXJOGADORES		4									// Max jogadores permitido
 #define SIZEMENSAGEM		sizeof(Msg)							// Tamanho da estrutura Msg
-#define SIZE_MEM_GERAL		sizeof(int)*2+sizeof(ConfigInicial)	// Tamanho da Memoria Partilhada Geral (2*"int" para o estado do Jogo e numero de clientes, "ConfigInicial" com os dados modificados pelo criador de jogo)
+#define SIZE_MEM_GERAL		sizeof(MemGeral)					// Tamanho da Memoria Partilhada Geral
 #define NOME_MEM_GERAL		TEXT("SharedMemGeral")				// Nome da Memoria Partilhada Geral
 #define SEM_MEM_GERAL		TEXT("SemaforoSharedMemGeral")		// Nome do Semaforo da Memoria Partilha Geral
 #define EVNT_MEM_GERAL		TEXT("EventoSharedMemGeral")		// Nome do Evento da Memoria Partilha Geral
@@ -59,6 +60,8 @@ typedef struct {
 	int A;			//Numero de Serpentes Automáticas
 	int O;			//Numero de Objectos
 	int N;			//Numero maximo de jogadores
+	int X;			//Tamanho do Mapa em X
+	int Y;			//Tamanho do Mapa em Y
 }ConfigInicial;
 
 typedef struct {
