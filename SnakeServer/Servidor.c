@@ -65,11 +65,17 @@ int _tmain(int argc, LPTSTR argv[]) {
 void preparaMemoriaPartilhada(void){
 
 	hMemoria = CreateFileMapping((HANDLE)INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, SIZE_MEM_GERAL, NOME_MEM_GERAL);
-
+	
 	vistaPartilha = (MemGeral*)MapViewOfFile(hMemoria, FILE_MAP_ALL_ACCESS, 0, 0, SIZE_MEM_GERAL);
 
 	hEventoMemoria = CreateEvent(NULL, TRUE, FALSE, EVNT_MEM_GERAL);
 	hSemMemoria = CreateSemaphore(NULL, MAXCLIENTES, MAXCLIENTES, SEM_MEM_GERAL);
+
+	if (hMemoria == NULL || hEventoMemoria == NULL || hSemMemoria == NULL) {
+		_tprintf(TEXT("[Erro] Criação de objectos do Windows(%d)\n"), GetLastError());
+		return -1;
+	}
+
 }
 
 void inicializaMemoriaPartilhada(void) {
