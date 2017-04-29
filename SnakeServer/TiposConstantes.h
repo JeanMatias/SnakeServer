@@ -4,6 +4,7 @@
 /*  CONSTANTES											 */
 /* ----------------------------------------------------- */
 #define SIZE_USERNAME		30									// Max chars do utilizador
+#define TAM_BUFFER			20									// Tamanho buffer a utilizar no cliente
 #define MAXCLIENTES			10									// Maximo de Clientes 
 #define MAXJOGADORES		4									// Max jogadores permitido
 #define SIZEMENSAGEM		sizeof(Msg)							// Tamanho da estrutura Msg
