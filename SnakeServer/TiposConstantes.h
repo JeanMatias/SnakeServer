@@ -5,16 +5,17 @@
 /* ----------------------------------------------------- */
 #define SIZE_USERNAME		30									// Max chars do utilizador
 #define TAM_BUFFER			20									// Tamanho de Buffer a utilizar no CLiente
-#define MAXCLIENTES			10									// Maximo de Clientes 
+#define MAXCLIENTES			4									// Maximo de Clientes 
 #define MAXJOGADORES		4									// Max jogadores permitido
+#define NUMTIPOOBJECTOS		10									// Tipo de objectos existentes
 #define SIZEMENSAGEM		sizeof(Msg)							// Tamanho da estrutura Msg
 #define SIZE_MEM_GERAL		sizeof(MemGeral)					// Tamanho da Memoria Partilhada Geral
 #define NOME_MEM_GERAL		TEXT("SharedMemGeral")				// Nome da Memoria Partilhada Geral
 #define SEM_MEM_GERAL		TEXT("SemaforoSharedMemGeral")		// Nome do Semaforo da Memoria Partilha Geral
 #define EVNT_MEM_GERAL		TEXT("EventoSharedMemGeral")		// Nome do Evento da Memoria Partilha Geral
-#define NOME_MEM_DINAMICA	TEXT("SharedMemDinamica")			// Nome da Memoria Partilhada Dinamica
 #define SEM_MEM_DINAMICA	TEXT("SemaforoSharedMemDinamica")	// Nome do Semaforo da Memoria Partilha Dinamica
 #define EVNT_MEM_DINAMICA	TEXT("EventoSharedMemDinamica")		// Nome do Evento da Memoria Partilha Dinamica
+#define FILE_MAP_NAME		TEXT("mappedFile.txt")				// Nome do Ficheiro mapeado em memoria
 //Estados de Jogo
 #define CRIACAOJOGO		1
 #define ASSOCIACAOJOGO	2
@@ -42,8 +43,8 @@
 #define O_COLA			9 
 
 //Valores configuraveis por defeito
-#define LINHAS			40
-#define COLUNAS			80
+#define LINHAS			20
+#define COLUNAS			20
 #define TAMANHOSNAKE	3
 #define NUMAUTOSNAKE	1
 #define NUMOBJETOS		6
@@ -84,5 +85,6 @@ typedef struct {
 	int estadoJogo;
 	TCHAR criador[SIZE_USERNAME];
 	ConfigInicial config;
+	Objecto objectos[NUMTIPOOBJECTOS];
 }MemGeral;
 
