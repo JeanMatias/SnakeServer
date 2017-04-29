@@ -4,7 +4,7 @@
 /*  CONSTANTES											 */
 /* ----------------------------------------------------- */
 #define SIZE_USERNAME		30									// Max chars do utilizador
-#define TAM_BUFFER			20									// Tamanho buffer a utilizar no cliente
+#define TAM_BUFFER			20									// Tamanho de Buffer a utilizar no CLiente
 #define MAXCLIENTES			10									// Maximo de Clientes 
 #define MAXJOGADORES		4									// Max jogadores permitido
 #define SIZEMENSAGEM		sizeof(Msg)							// Tamanho da estrutura Msg
@@ -41,6 +41,13 @@
 #define O_OLEO			8 
 #define O_COLA			9 
 
+//Valores configuraveis por defeito
+#define LINHAS			40
+#define COLUNAS			80
+#define TAMANHOSNAKE	3
+#define NUMAUTOSNAKE	1
+#define NUMOBJETOS		6
+
 /* ----------------------------------------------------- */
 /*  TIPOS												 */
 /* ----------------------------------------------------- */
@@ -62,8 +69,8 @@ typedef struct {
 	int A;			//Numero de Serpentes Automáticas
 	int O;			//Numero de Objectos
 	int N;			//Numero maximo de jogadores
-	int X;			//Tamanho do Mapa em X
-	int Y;			//Tamanho do Mapa em Y
+	int L;			//Tamanho do Mapa em Linhas
+	int C;			//Tamanho do Mapa em Colunas
 }ConfigInicial;
 
 typedef struct {
@@ -74,9 +81,8 @@ typedef struct {
 typedef struct {
 	Msg mensagem;					//Mensagem para utilizadores saberem o que há de novo na memória.
 	int numClientes;				//Clientes actualmente ligados (esta var serve apenas para não deixar entrar mais utilizadores que MAXCLIENTES)
-	int estadoJogo;					
+	int estadoJogo;
 	TCHAR criador[SIZE_USERNAME];
 	ConfigInicial config;
 }MemGeral;
-
 
