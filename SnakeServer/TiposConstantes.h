@@ -53,6 +53,7 @@ typedef struct {
 	char username[SIZE_USERNAME];
 	int pontuacao;
 	int direcao;
+	int primeiroSegmento;
 	int ultimoSegmento;
 }Cobras;
 
@@ -71,8 +72,10 @@ typedef struct {
 }Objecto;
 
 typedef struct {
-	int numClientes;
-	int estadoJogo;
+	Msg mensagem;					//Mensagem para utilizadores saberem o que há de novo na memória.
+	int numClientes;				//Clientes actualmente ligados (esta var serve apenas para não deixar entrar mais utilizadores que MAXCLIENTES)
+	int estadoJogo;					
+	TCHAR criador[SIZE_USERNAME];
 	ConfigInicial config;
 }MemGeral;
 
