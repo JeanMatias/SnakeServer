@@ -23,6 +23,7 @@ Cobras *vistaPartilhaCobras;
 /*  PROTOTIPOS FUNÇÕES DA DLL							 */
 /* ----------------------------------------------------- */
 void preparaMemoriaPartilhada(void);
+void preparaMemoriaPartilhadaDinamica(void);
 void inicializaMemoriaPartilhada(void);
 void esperaPorActualizacao(void);
 void leMemoriaPartilhada(MemGeral* param);
