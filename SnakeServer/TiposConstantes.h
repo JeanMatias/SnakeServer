@@ -8,14 +8,16 @@
 #define MAXCLIENTES			4									// Maximo de Clientes 
 #define MAXJOGADORES		4									// Max jogadores permitido
 #define NUMTIPOOBJECTOS		10									// Tipo de objectos existentes
+#define MAX_LINHAS			40									//Limite maximo de Linhas
+#define MAX_COLUNAS			80
+#define MIN_LINHAS			10
+#define MIN_COLUNAS			10
 #define SIZEMENSAGEM		sizeof(Msg)							// Tamanho da estrutura Msg
 #define SIZE_MEM_GERAL		sizeof(MemGeral)					// Tamanho da Memoria Partilhada Geral
 #define NOME_MEM_GERAL		TEXT("SharedMemGeral")				// Nome da Memoria Partilhada Geral
 #define SEM_MEM_GERAL		TEXT("SemaforoSharedMemGeral")		// Nome do Semaforo da Memoria Partilha Geral
 #define EVNT_MEM_GERAL		TEXT("EventoSharedMemGeral")		// Nome do Evento da Memoria Partilha Geral
-#define SEM_MEM_DINAMICA	TEXT("SemaforoSharedMemDinamica")	// Nome do Semaforo da Memoria Partilha Dinamica
-#define EVNT_MEM_DINAMICA	TEXT("EventoSharedMemDinamica")		// Nome do Evento da Memoria Partilha Dinamica
-#define FILE_MAP_NAME		TEXT("mappedFile.txt")				// Nome do Ficheiro mapeado em memoria
+#define FILE_MAP_NAME		TEXT("backup.txt")					// Nome do Ficheiro mapeado em memoria
 //Estados de Jogo
 #define CRIACAOJOGO		1
 #define ASSOCIACAOJOGO	2
@@ -58,11 +60,11 @@ typedef struct {
 }Msg;
 
 typedef struct {
-	char username[SIZE_USERNAME];
+	TCHAR username[SIZE_USERNAME];
 	int pontuacao;
 	int direcao;
-	int primeiroSegmento;
-	int ultimoSegmento;
+	int estadoJogador;
+	int posicoesCobra[MAX_COLUNAS * MAX_LINHAS];
 }Cobras;
 
 typedef struct {
@@ -80,11 +82,14 @@ typedef struct {
 }Objecto;
 
 typedef struct {
-	Msg mensagem;					//Mensagem para utilizadores saberem o que há de novo na memória.
-	int numClientes;				//Clientes actualmente ligados (esta var serve apenas para não deixar entrar mais utilizadores que MAXCLIENTES)
-	int estadoJogo;
+	Msg mensagem;							//Mensagem para utilizadores saberem o que há de novo na memória.
+	int estadoJogo;	
+	int vagasJogadores;
 	TCHAR criador[SIZE_USERNAME];
 	ConfigInicial config;
 	Objecto objectos[NUMTIPOOBJECTOS];
+	Cobras jogadores[MAXJOGADORES];
+	TCHAR mapa[MAX_LINHAS][MAX_COLUNAS];
 }MemGeral;
+
 

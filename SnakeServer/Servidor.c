@@ -17,13 +17,11 @@ HANDLE hSemMemoria;
 HANDLE hEventoMemoria;
 HANDLE hFicheiro;
 MemGeral *vistaPartilhaGeral;
-TCHAR *vistaPartilhaMapa;
-Cobras *vistaPartilhaCobras;
 /* ----------------------------------------------------- */
 /*  PROTOTIPOS FUNÇÕES DA DLL							 */
 /* ----------------------------------------------------- */
 void preparaMemoriaPartilhada(void);
-void preparaMemoriaPartilhadaDinamica(void);
+void preparaMapaJogo(MemGeral param);
 void inicializaMemoriaPartilhada(void);
 void esperaPorActualizacao(void);
 void leMemoriaPartilhada(MemGeral* param);
@@ -52,11 +50,11 @@ int _tmain(int argc, LPTSTR argv[]) {
 
 		leMemoriaPartilhada(&aux);
 
-		_tprintf(TEXT("NumClientes: %d \n Estado:%d \nUsername:%s\nCodigoMSG:%d"), aux.numClientes, aux.estadoJogo,aux.mensagem.username,aux.mensagem.codigoMsg);
+		_tprintf(TEXT("Estado:%d \nUsername:%s\nCodigoMSG:%d"), aux.estadoJogo,aux.mensagem.username,aux.mensagem.codigoMsg);
 		switch (aux.mensagem.codigoMsg)
 		{
-		case CRIARJOGO://criar Memoria dinamica
-			preparaMemoriaPartilhadaDinamica(aux);
+		case CRIARJOGO://criar Mapa do jogo
+			preparaMapaJogo(aux);
 		default:
 			break;
 		}
@@ -89,16 +87,30 @@ void preparaMemoriaPartilhada(void){
 
 }
 
-void preparaMemoriaPartilhadaDinamica(MemGeral param) {
+void preparaMapaJogo(MemGeral param) {
 
-	vistaPartilhaMapa = (TCHAR*)MapViewOfFile(hMemoria, FILE_MAP_ALL_ACCESS, 0, SIZE_MEM_GERAL, param.config.L * param.config.C * sizeof(TCHAR));
+	for (int i = 0; i < MAXCLIENTES - 1; i++) {
+		WaitForSingleObject(hSemMemoria, INFINITE);
+	}
 
-	vistaPartilhaCobras = (Cobras*)MapViewOfFile(hMemoria, FILE_MAP_ALL_ACCESS, 0, SIZE_MEM_GERAL + param.config.L * param.config.C * sizeof(TCHAR),sizeof(Cobras)*(param.config.N + param.config.A) );
-
+	for (int z = 0; z < param.config.C; z++) {
+		vistaPartilhaGeral->mapa[0][z] = TEXT('#');
+		vistaPartilhaGeral->mapa[param.config.L-1][z] = TEXT('#');
+		for (int j = 1; j < param.config.L-1; j++) {
+			if (z == 0 || z == param.config.C-1) {
+				vistaPartilhaGeral->mapa[j][z] = TEXT('#');
+			}
+			else
+				vistaPartilhaGeral->mapa[j][z] = TEXT(' ');
+		}
+	}
+	SetEvent(hEventoMemoria);
+	ResetEvent(hEventoMemoria);
+	ReleaseSemaphore(hSemMemoria, MAXCLIENTES, NULL);	
 }
+
 void inicializaMemoriaPartilhada(void) {
 	//Inicialização da Memoria Partilhada
-	vistaPartilhaGeral->numClientes = 0;
 	vistaPartilhaGeral->estadoJogo = CRIACAOJOGO;
 }
 
@@ -110,10 +122,11 @@ void leMemoriaPartilhada(MemGeral* param) {
 	
 	WaitForSingleObject(hSemMemoria, INFINITE);
 
-	param->numClientes = vistaPartilhaGeral->numClientes;
 	param->estadoJogo = vistaPartilhaGeral->estadoJogo;
 	param->mensagem.codigoMsg = vistaPartilhaGeral->mensagem.codigoMsg;
 	_tcscpy_s(param->mensagem.username, SIZE_USERNAME, vistaPartilhaGeral->mensagem.username);
+	param->config.C = vistaPartilhaGeral->config.C;
+	param->config.L = vistaPartilhaGeral->config.L;
 
 	ReleaseSemaphore(hSemMemoria, 1, NULL);
 }
