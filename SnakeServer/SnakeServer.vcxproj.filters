@@ -24,4 +24,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <Library Include="..\Debug\DLL.lib" />
+  </ItemGroup>
 </Project>

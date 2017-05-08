@@ -61,6 +61,13 @@ typedef struct {
 
 typedef struct {
 	TCHAR username[SIZE_USERNAME];
+	int pontuacaoTotal;
+	int numJogos;
+	int numVitorias;
+}Jogador;
+
+typedef struct {
+	TCHAR username[SIZE_USERNAME];
 	int pontuacao;
 	int direcao;
 	int estadoJogador;
