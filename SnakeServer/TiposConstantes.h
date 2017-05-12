@@ -29,6 +29,11 @@
 #define ESQUERDA		3
 #define DIREITA			4
 
+//Estados do Jogador
+#define VIVO			1
+#define MORTO			2
+
+//Tipos de Mensagem (PIPES)
 #define CRIARJOGO		5
 #define JUNTARJOGO		6
 #define ACTUALIZAMAPA	7
@@ -68,10 +73,12 @@ typedef struct {
 
 typedef struct {
 	TCHAR username[SIZE_USERNAME];
+	int tamanho;
+	int porAparecer;
 	int pontuacao;
 	int direcao;
 	int estadoJogador;
-	int posicoesCobra[MAX_COLUNAS * MAX_LINHAS];
+	int posicoesCobra[MAX_COLUNAS * MAX_LINHAS] [2];
 }Cobras;
 
 typedef struct {
