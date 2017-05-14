@@ -9,14 +9,18 @@
 /* ----------------------------------------------------- */
 /*  VARIÁVEIS GLOBAIS									 */
 /* ----------------------------------------------------- */
-Jogador *listaJogadores;
-void criaCobra(TCHAR username[SIZE_USERNAME], int vaga);
-long random_at_most(long max);
+Jogador *listaJogadores;//para usar mais tarde com o Registo
+BOOLEAN jogoADecorrer = FALSE;
+
+DWORD WINAPI moveCobras(LPVOID param);
+
 /* ----------------------------------------------------- */
 /*  Função MAIN											 */
 /* ----------------------------------------------------- */
 int _tmain(int argc, LPTSTR argv[]) {
 	MemGeral  aux;
+	DWORD tid;
+	HANDLE hThread;
 
 #ifdef UNICODE
 	_setmode(_fileno(stdin), _O_WTEXT);
@@ -38,6 +42,14 @@ int _tmain(int argc, LPTSTR argv[]) {
 		{
 		case CRIARJOGO://criar Mapa do jogo
 			preparaMapaJogo(aux);
+			break;
+		case INICIARJOGO:
+			if (!jogoADecorrer) {
+				//criar threads de interação com o mapa
+				hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)moveCobras, NULL, 0, &tid);
+				jogoADecorrer = TRUE;
+			}
+			
 		default:
 			break;
 		}
@@ -50,76 +62,154 @@ int _tmain(int argc, LPTSTR argv[]) {
 	return 0;
 }
 
-//Gera as posições da cobra no mapa verificando se há colisões com paredes e fazendo a respectiva alteração á cobra
-void criaCobra(TCHAR username[SIZE_USERNAME],int vaga) {
-	int posXGerada, posYGerada, dirGerada;
-	//Gera posições até encontrar uma vaga;
+/*----------------------------------------------------------------- */
+/*  THREAD - Função que movimenta as cobras no mapa				 	*/
+/* ---------------------------------------------------------------- */
+DWORD WINAPI moveCobras(LPVOID param) {
+	int posArrayAux, auxLinha, auxColuna;
+
 	while (1) {
-		posXGerada = random_at_most((long)vistaPartilhaGeral->config.C);
-		posYGerada = random_at_most((long)vistaPartilhaGeral->config.L);
-		if (vistaPartilhaGeral->mapa[posYGerada][posXGerada] == ' ')
-			break;
-	}
+		//Aqui deve esperar pelo Tîmer para que este avise que passou um instante(?)
+		Sleep(500);
+		for (int i = 0; i < MAXCLIENTES; i++) {
+			WaitForSingleObject(hSemMemoria, INFINITE);
+		}
+		for (int j = 0; j < vistaPartilhaGeral->config.N; j++) {
+			//mexer so as cobras vivas
+			if (vistaPartilhaGeral->jogadores[j].estadoJogador == VIVO) {
+				switch (vistaPartilhaGeral->jogadores[j].direcao)
+				{
+				case CIMA://Coluna mantem-se, muda de linha(-1)
+					if (vistaPartilhaGeral->jogadores[j].porAparecer != 0) {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - vistaPartilhaGeral->jogadores[j].porAparecer;
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][1];
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha-1;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna;
+						vistaPartilhaGeral->jogadores[j].porAparecer--;
+						vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = j + '0';
+					}
+					else {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - 1;
+						//Apagar a cauda do mapa
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][1];
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ' ';
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1];
+						//Mover todas as posições da cobra no array sobrepondo as antigas
+						for (int z = 0; z < posArrayAux; z++) {
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][0] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z+1][0];
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][1] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z+1][1];
+						}
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha - 1;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna;
+						vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = j + '0';
+						
+					}					
+					break;
+				case BAIXO://Coluna mantem-se, muda de linha(+1)
+					if (vistaPartilhaGeral->jogadores[j].porAparecer != 0) {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - vistaPartilhaGeral->jogadores[j].porAparecer;
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][1];
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha + 1;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna;
+						vistaPartilhaGeral->jogadores[j].porAparecer--;
+						vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] = j + '0';
+					}
+					else {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - 1;
+						//Apagar a cauda do mapa
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][1];
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ' ';
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1];
+						//Mover todas as posições da cobra no array sobrepondo as antigas
+						for (int z = 0; z < posArrayAux; z++) {
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][0] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z + 1][0];
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][1] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z + 1][1];
+						}
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha + 1;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna;
+						vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] = j + '0';
 
-	//Na posição 0 do array de posições ficam as Linhas e na 1 ficam as Colunas
-	vistaPartilhaGeral->jogadores[vaga].posicoesCobra[0][0] = posYGerada;
-	vistaPartilhaGeral->jogadores[vaga].posicoesCobra[0][1] = posXGerada;
+					}
+					break;
+				case ESQUERDA://Linha mantem-se, muda de coluna(-1)
+					if (vistaPartilhaGeral->jogadores[j].porAparecer != 0) {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - vistaPartilhaGeral->jogadores[j].porAparecer;
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][1];
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna - 1;
+						vistaPartilhaGeral->jogadores[j].porAparecer--;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] = j + '0';
+					}
+					else {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - 1;
+						//Apagar a cauda do mapa
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][1];
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ' ';
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1];
+						//Mover todas as posições da cobra no array sobrepondo as antigas
+						for (int z = 0; z < posArrayAux; z++) {
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][0] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z + 1][0];
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][1] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z + 1][1];
+						}
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna - 1;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] = j + '0';
 
-	dirGerada = random_at_most(3)+1;
-	vistaPartilhaGeral->jogadores[vaga].direcao = dirGerada;
+					}
+					break;
+				case DIREITA://Linha mantem-se, muda de coluna(+1)
+					if (vistaPartilhaGeral->jogadores[j].porAparecer != 0) {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - vistaPartilhaGeral->jogadores[j].porAparecer;
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux - 1][1];
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna + 1;
+						vistaPartilhaGeral->jogadores[j].porAparecer--;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] = j + '0';
+					}
+					else {
+						posArrayAux = vistaPartilhaGeral->jogadores[j].tamanho - 1;
+						//Apagar a cauda do mapa
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[0][1];
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ' ';
+						//Buscar a posição da cabeça
+						auxLinha = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0];
+						auxColuna = vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1];
+						//Mover todas as posições da cobra no array sobrepondo as antigas
+						for (int z = 0; z < posArrayAux; z++) {
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][0] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z + 1][0];
+							vistaPartilhaGeral->jogadores[j].posicoesCobra[z][1] = vistaPartilhaGeral->jogadores[j].posicoesCobra[z + 1][1];
+						}
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][0] = auxLinha;
+						vistaPartilhaGeral->jogadores[j].posicoesCobra[posArrayAux][1] = auxColuna + 1;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] = j + '0';
+					}
+					break;
+				}
+			}
+		}
 
-	vistaPartilhaGeral->jogadores[vaga].porAparecer = vistaPartilhaGeral->config.T - 1;
-	vistaPartilhaGeral->jogadores[vaga].estadoJogador = VIVO;
-	vistaPartilhaGeral->jogadores[vaga].pontuacao = 0;
-	vistaPartilhaGeral->jogadores[vaga].tamanho = vistaPartilhaGeral->config.T;
-	_tcscpy_s(vistaPartilhaGeral->jogadores[vaga].username, SIZE_USERNAME, username);
-}
-
-int AssociaJogo(int numJogadores, TCHAR username1[SIZE_USERNAME], TCHAR username2[SIZE_USERNAME]) {
-	for (int i = 0; i < MAXCLIENTES; i++) {
-		WaitForSingleObject(hSemMemoria, INFINITE);
-	}
-	if ((vistaPartilhaGeral->estadoJogo != ASSOCIACAOJOGO) && ((vistaPartilhaGeral->config.N - vistaPartilhaGeral->vagasJogadores) < numJogadores)) {
+		SetEvent(hEventoMemoria);
+		ResetEvent(hEventoMemoria);
 		ReleaseSemaphore(hSemMemoria, MAXCLIENTES, NULL);
-		return 0;
 	}
-
-	if (numJogadores == 1) {
-		criaCobra(username1, vistaPartilhaGeral->vagasJogadores);
-		vistaPartilhaGeral->vagasJogadores++;
-	}
-	else {
-		criaCobra(username1, vistaPartilhaGeral->vagasJogadores);
-		vistaPartilhaGeral->vagasJogadores++;
-		criaCobra(username2, vistaPartilhaGeral->vagasJogadores);
-		vistaPartilhaGeral->vagasJogadores++;
-	}
-
-	SetEvent(hEventoMemoria);
-	ResetEvent(hEventoMemoria);
-	ReleaseSemaphore(hSemMemoria, MAXCLIENTES, NULL);
-	return 1;
-}
-
-// Assumes 0 <= max <= RAND_MAX
-// Returns in the closed interval [0, max]
-long random_at_most(long max) {
-	unsigned long
-		// max <= RAND_MAX < ULONG_MAX, so this is okay.
-		num_bins = (unsigned long)max + 1,
-		num_rand = (unsigned long)RAND_MAX + 1,
-		bin_size = num_rand / num_bins,
-		defect = num_rand % num_bins;
-
-	long x;
-	do {
-		x = (long)random();
-	}
-	// This is carefully written not to overflow
-	while (num_rand - defect <= (unsigned long)x);
-
-	// Truncated division is intentional
-	return x / bin_size;
 }
 
 
