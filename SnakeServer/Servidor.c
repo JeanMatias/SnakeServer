@@ -4,7 +4,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h> 
-#include "..\..\DLL\DLL\DLL.h"
+#include "..\..\SnakeDLL\\SnakeDLL\SnakeDLL.h"
 
 /* ----------------------------------------------------- */
 /*  VARIÁVEIS GLOBAIS									 */

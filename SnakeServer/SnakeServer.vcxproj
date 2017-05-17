@@ -149,7 +149,7 @@
     <ClCompile Include="Servidor.c" />
   </ItemGroup>
   <ItemGroup>
-    <Library Include="..\Debug\DLL.lib" />
+    <Library Include="..\Debug\SnakeDLL.lib" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

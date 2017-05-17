@@ -20,6 +20,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Library Include="..\Debug\DLL.lib" />
+    <Library Include="..\Debug\SnakeDLL.lib" />
   </ItemGroup>
 </Project>
