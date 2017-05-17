@@ -70,7 +70,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 
 	while (1) {
 		//Aqui deve esperar pelo Tîmer para que este avise que passou um instante(?)
-		Sleep(500);
+		Sleep(100);
 		for (int i = 0; i < MAXCLIENTES; i++) {
 			WaitForSingleObject(hSemMemoria, INFINITE);
 		}
