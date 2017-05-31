@@ -4,7 +4,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h> 
-#include "..\..\SnakeDLL\\SnakeDLL\SnakeDLL.h"
+#include "..\..\SnakeDLL\SnakeDLL\SnakeDLL.h"
 
 
 //mais tarde ver a necessidade de sincronização a aceder esta estrutura no servidor
@@ -13,8 +13,9 @@ typedef struct {
 	int estadoJogo;
 	int vagasJogadores;
 	ConfigInicial config;
-	Objecto objectos[NUMTIPOOBJECTOS];
+	ConfigObjecto configObjectos[NUMTIPOOBJECTOS];
 	Cobras jogadores[MAXJOGADORES];
+	Objecto objectosMapa[MAXOBJECTOS];
 }Jogo;
 /* ----------------------------------------------------- */
 /*  VARIÁVEIS GLOBAIS									 */
@@ -77,18 +78,12 @@ int _tmain(int argc, LPTSTR argv[]) {
 		case INICIARJOGO:
 			IniciaJogo(aux.pid);
 			break;
-		case CIMA_JOGADOR1:
-		case BAIXO_JOGADOR1:
-		case ESQUERDA_JOGADOR1:
-		case DIREITA_JOGADOR1:
-			mudaDirecaoJogador(aux.codigoPedido, aux.pid, JOGADOR1);
+		case CIMA:
+		case BAIXO:
+		case ESQUERDA:
+		case DIREITA:
+			mudaDirecaoJogador(aux.codigoPedido, aux.pid, aux.jogador);
 			break;
-		case CIMA_JOGADOR2:
-		case BAIXO_JOGADOR2:
-		case ESQUERDA_JOGADOR2:
-		case DIREITA_JOGADOR2:
-			AssociaJogo(aux.username, aux.pid, JOGADOR2);
-			break;		
 		default:
 			break;
 		}
@@ -112,11 +107,12 @@ void lePedidoDaFila(Pedido *param){
 	WaitForSingleObject(hPodeLerPedido, INFINITE);
 
 	param->pid = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].pid;
+	param->jogador = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].jogador;
 	param->codigoPedido = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].codigoPedido;
 	param->config = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].config;
 	_tcscpy_s(param->username , SIZE_USERNAME, vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].username);
 	for (int i = 0; i < NUMTIPOOBJECTOS; i++)
-		param->objectos[i] = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].objectos[i];
+		param->objectosConfig[i] = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].objectosConfig[i];
 
 	vistaPartilhaGeral->fila.frente++;
 
@@ -136,15 +132,16 @@ DWORD WINAPI moveCobras(LPVOID param) {
 	int idCobraNoMapa, posCobra = (int)param;
 
 	while (1) {
-		//Aqui deve esperar pelo Tîmer para que este avise que passou um instante(?)
-		Sleep(800);
+		Sleep(LENTIDAO * RAPIDO);
 		//mexer so as cobras vivas
 		if (jogo.jogadores[posCobra].estadoJogador == VIVO) {
 			idCobraNoMapa = (posCobra + 1) * 100;
+			for (int i = 0; i < MAXCLIENTES; i++) {
+				WaitForSingleObject(hSemaforoMapa, INFINITE);
+			}
 			switch (jogo.jogadores[posCobra].direcao)
 			{
-			case CIMA_JOGADOR1:
-			case CIMA_JOGADOR2://Coluna mantem-se, muda de linha(-1)
+			case CIMA://Coluna mantem-se, muda de linha(-1)
 				if (jogo.jogadores[posCobra].porAparecer != 0) {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - jogo.jogadores[posCobra].porAparecer;
 					//Buscar a posição da cabeça
@@ -153,11 +150,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha-1;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna;
 					jogo.jogadores[posCobra].porAparecer--;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
 					vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 				}
 				else {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - 1;
@@ -175,15 +168,10 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					}
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha - 1;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
-					vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);						
+					vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa;		
 				}					
 				break;
-			case BAIXO_JOGADOR1:
-			case BAIXO_JOGADOR2://Coluna mantem-se, muda de linha(+1)
+			case BAIXO://Coluna mantem-se, muda de linha(+1)
 				if (jogo.jogadores[posCobra].porAparecer != 0) {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - jogo.jogadores[posCobra].porAparecer;
 					//Buscar a posição da cabeça
@@ -192,11 +180,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna;
 					jogo.jogadores[posCobra].porAparecer--;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
 					vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 				}
 				else {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - 1;
@@ -214,16 +198,10 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					}
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
 					vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
-
 				}
 				break;
-			case ESQUERDA_JOGADOR1:
-			case ESQUERDA_JOGADOR2://Linha mantem-se, muda de coluna(-1)
+			case ESQUERDA://Linha mantem-se, muda de coluna(-1)
 				if (jogo.jogadores[posCobra].porAparecer != 0) {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - jogo.jogadores[posCobra].porAparecer;
 					//Buscar a posição da cabeça
@@ -232,11 +210,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
 					jogo.jogadores[posCobra].porAparecer--;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
 					vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 				}
 				else {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - 1;
@@ -254,16 +228,10 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					}
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
 					vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
-
 				}
 				break;
-			case DIREITA_JOGADOR1:
-			case DIREITA_JOGADOR2://Linha mantem-se, muda de coluna(+1)
+			case DIREITA://Linha mantem-se, muda de coluna(+1)
 				if (jogo.jogadores[posCobra].porAparecer != 0) {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - jogo.jogadores[posCobra].porAparecer;
 					//Buscar a posição da cabeça
@@ -272,11 +240,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
 					jogo.jogadores[posCobra].porAparecer--;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
 					vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 				}
 				else {
 					posArrayAux = jogo.jogadores[posCobra].tamanho - 1;
@@ -294,17 +258,15 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					}
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
-					for (int i = 0; i < MAXCLIENTES; i++) {
-						WaitForSingleObject(hSemaforoMapa, INFINITE);
-					}
 					vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa;
-					ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 				}
 				break;
 			}
 		}
+		_tprintf(TEXT("**********ITERAÇÂO DO MAPA**********\n"));
 		SetEvent(hEventoMapa);
 		ResetEvent(hEventoMapa);
+		ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 	}
 }
 
@@ -362,6 +324,7 @@ int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador) {
 	
 	//Se não existir jogo criado ou não existirem vagas
 	if ((jogo.estadoJogo != ASSOCIACAOJOGO) || ((jogo.config.N - jogo.vagasJogadores) == 0)) {
+		_tprintf(TEXT("**********ERRO ASSOCIAR JOGO**********\n"));
 		return 0;
 	}
 
@@ -377,6 +340,7 @@ int IniciaJogo(int pid) {
 
 	//Se não for o computador que criou o jogo não pode dar inicio a este
 	if (!(jogo.pidCriador==pid) && (jogo.estadoJogo == ASSOCIACAOJOGO)){
+		_tprintf(TEXT("**********ERRO INICIAR JOGO**********\n"));
 		return 0;
 	}
 	//Se for, criar as threads de mover as cobras, de gerir objectos e gerir cobras automaticas e notificar jogadores
@@ -419,20 +383,55 @@ void preparaMapaJogo() {
 	}
 }
 
-//altera a direcao do jogador 1 ou 2 de determinado pid
+/*----------------------------------------------------------------- */
+/*  THREAD - Função que gere os objectos no mapa				 	*/
+/* ---------------------------------------------------------------- */
+DWORD WINAPI gereObjectos(LPVOID param) {
+	//Cria os objetos no mapa
+	for (int i = 0; i < jogo.config.O; i++) {
+
+	}
+	while (1) {
+		Sleep(SEGUNDO);
+
+	}
+}
+
+//altera a direcao do jogador 1 ou 2 de determinado pid, se a mudança de direção for inversa a actual ignora o movimento
 void mudaDirecaoJogador(int direcao, int pid, int jogador) {
 	int posicao;
 	posicao = procuraJogador(pid, jogador);
-	jogo.jogadores[posicao].direcao = direcao;
+	switch (direcao)
+	{
+	case CIMA:if(jogo.jogadores[posicao].direcao !=BAIXO)
+		jogo.jogadores[posicao].direcao = direcao;
+		break;
+	case BAIXO:if (jogo.jogadores[posicao].direcao != CIMA)
+		jogo.jogadores[posicao].direcao = direcao;
+		break;
+	case ESQUERDA:if (jogo.jogadores[posicao].direcao != DIREITA)
+		jogo.jogadores[posicao].direcao = direcao;
+		break;
+	case DIREITA:if (jogo.jogadores[posicao].direcao != ESQUERDA)
+		jogo.jogadores[posicao].direcao = direcao;
+		break;
+	default:
+		break;
+	}
+	
 	
 }
 
 //procura o jogador mencionado na lista de jogadores em jogo
 int procuraJogador(int pid, int jogador) {
 	for (int i = 0; i < jogo.config.N; i++) {
-		if (jogo.jogadores[i].pid == pid && jogo.jogadores[i].jogador == jogador)
+		if (jogo.jogadores[i].pid == pid && jogo.jogadores[i].jogador == jogador) {
+			_tprintf(TEXT("Posicao do jogador no array:%d\n"), i);
 			return i;
+		}
+			
 	}
+	
 	return -1;
 }
 
