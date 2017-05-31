@@ -33,6 +33,10 @@ int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador);
 int IniciaJogo(int pid);
 void mudaDirecaoJogador(int direcao, int pid, int jogador);
 int procuraJogador(int pid, int jogador);
+DWORD WINAPI gestorObjectos(LPVOID param);
+void criaObjectosMapaInicial(void);
+int procuraObjecto(int linha, int coluna);
+void geraObjecto(int indice);
 
 
 /* ----------------------------------------------------- */
@@ -348,6 +352,8 @@ int IniciaJogo(int pid) {
 	for (int i = 0; i < jogo.vagasJogadores; i++) {
 		hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)moveCobras, (LPVOID)i, 0, &tid);
 	}
+
+	hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gestorObjectos,NULL, 0, &tid);
 	
 	
 	return 1;
@@ -365,6 +371,9 @@ int Cria_Jogo(ConfigInicial param, int pid) {
 	jogo.vagasJogadores = 0;
 	vistaPartilhaGeral->colunas = param.C;
 	vistaPartilhaGeral->linhas = param.L;
+	//defenir as configs por defeito dos objetos
+	for (int i = 0; i < NUMTIPOOBJECTOS; i++)
+		jogo.configObjectos[i].S = SEGUNDOSMAPA;
 
 	return 1;
 }
@@ -386,15 +395,77 @@ void preparaMapaJogo() {
 /*----------------------------------------------------------------- */
 /*  THREAD - Função que gere os objectos no mapa				 	*/
 /* ---------------------------------------------------------------- */
-DWORD WINAPI gereObjectos(LPVOID param) {
-	//Cria os objetos no mapa
-	for (int i = 0; i < jogo.config.O; i++) {
-
-	}
+DWORD WINAPI gestorObjectos(LPVOID param) {
+	criaObjectosMapaInicial();
 	while (1) {
 		Sleep(SEGUNDO);
-
+		for (int i = 0; i < jogo.config.O; i++) {
+			jogo.objectosMapa[i].segundosRestantes--;
+			if (jogo.objectosMapa[i].segundosRestantes == 0) {
+				for (int i = 0; i < MAXCLIENTES; i++) {
+					WaitForSingleObject(hSemaforoMapa, INFINITE);
+				}
+				vistaPartilhaGeral->mapa[jogo.objectosMapa[i].linha][jogo.objectosMapa[i].coluna] = ESPACOVAZIO;
+				geraObjecto(i);
+				SetEvent(hEventoMapa);
+				ResetEvent(hEventoMapa);
+				ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
+			}
+		}
 	}
+}
+
+void criaObjectosMapaInicial(void) {
+	for (int i = 0; i < jogo.config.O; i++) {
+		geraObjecto(i);
+	}
+
+}
+
+int procuraObjecto(int linha, int coluna) {
+	for (int i = 0; i < MAXOBJECTOS; i++) {
+		if ((jogo.objectosMapa[i].coluna == coluna) && (jogo.objectosMapa[i].linha == linha))
+			return i;
+	}
+}
+
+void geraObjecto(int indice) {
+	int posXGerada, posYGerada, tipoGerado;
+	while (1) {
+		posXGerada = rand() % jogo.config.C;
+		posYGerada = rand() % jogo.config.L;
+		if (vistaPartilhaGeral->mapa[posYGerada][posXGerada] == ESPACOVAZIO)
+			break;
+	}
+	//Gera um objecto dentro do intervalo de probabilidades dos objectos
+	tipoGerado = rand() % PROB_GRANADA;
+
+	//defenir o objecto no indice fornecido como sendo do tipo gerado
+	if (tipoGerado < PROB_ALIMENTO)
+		jogo.objectosMapa[indice].Tipo = ALIMENTO;
+	else if (tipoGerado < PROB_GELO)
+		jogo.objectosMapa[indice].Tipo = GELO;
+	else if (tipoGerado < PROB_OLEO)
+		jogo.objectosMapa[indice].Tipo = OLEO;
+	else if (tipoGerado < PROB_COLA)
+		jogo.objectosMapa[indice].Tipo = COLA;
+	else if (tipoGerado < PROB_VODKA)
+		jogo.objectosMapa[indice].Tipo = VODKA;
+	else if (tipoGerado < PROB_O_VODKA)
+		jogo.objectosMapa[indice].Tipo = O_VODKA;
+	else if (tipoGerado < PROB_O_OLEO)
+		jogo.objectosMapa[indice].Tipo = O_OLEO;
+	else if (tipoGerado < PROB_O_COLA)
+		jogo.objectosMapa[indice].Tipo = O_COLA;
+	else if (tipoGerado < PROB_SURPRESA)
+		jogo.objectosMapa[indice].Tipo = SURPRESA;
+	else 
+		jogo.objectosMapa[indice].Tipo = GRANADA;
+
+	jogo.objectosMapa[indice].linha = posYGerada;
+	jogo.objectosMapa[indice].coluna = posXGerada;
+	jogo.objectosMapa[indice].segundosRestantes = jogo.configObjectos[jogo.objectosMapa[indice].Tipo - 1].S;
+	vistaPartilhaGeral->mapa[posYGerada][posXGerada] = jogo.objectosMapa[indice].Tipo;
 }
 
 //altera a direcao do jogador 1 ou 2 de determinado pid, se a mudança de direção for inversa a actual ignora o movimento
