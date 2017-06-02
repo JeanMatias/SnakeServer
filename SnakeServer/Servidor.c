@@ -274,6 +274,89 @@ DWORD WINAPI moveCobras(LPVOID param) {
 	}
 }
 
+//Função que trata colisões chamada quando a cobra vai entrar numa casa do mapa que não está vazia,
+//devolve 1 se deve desenhar a cobra na posição que vai entrar ou não.
+int trataColisao(int linha,int coluna, int indiceCobra) {
+	int tipoGerado;
+	switch (vistaPartilhaGeral->mapa[linha][coluna]) {
+	case PAREDE:jogo.jogadores[indiceCobra].estadoJogador = MORTO;//detetar fim do jogo
+		return 0;
+		break;
+	case ALIMENTO:jogo.jogadores[indiceCobra].tamanho++;
+		jogo.jogadores[indiceCobra].porAparecer++;
+		return 1;
+		break;
+	case GELO:jogo.jogadores[indiceCobra].tamanho--;
+		return 1;
+		break;
+	case GRANADA:jogo.jogadores[indiceCobra].estadoJogador = MORTO;//detetar fim do jogo
+		return 0;
+		break;
+	case VODKA:jogo.jogadores[indiceCobra].estadoJogador = BEBADO;
+		return 1;
+		break;
+	case OLEO:jogo.jogadores[indiceCobra].estadoJogador = LEBRE;
+		return 1;
+		break;
+	case COLA:jogo.jogadores[indiceCobra].estadoJogador = TARTARUGA;
+		return 1;
+		break;
+	case O_VODKA:for(int i=0;i<jogo.config.N;i++)
+					if(i!=indiceCobra)
+						jogo.jogadores[i].estadoJogador = BEBADO;
+		break;
+	case O_OLEO:for (int i = 0; i<jogo.config.N; i++)
+					if (i != indiceCobra)
+						jogo.jogadores[i].estadoJogador = LEBRE;
+		break;
+	case O_COLA:for (int i = 0; i<jogo.config.N; i++)
+					if (i != indiceCobra)
+						jogo.jogadores[i].estadoJogador = TARTARUGA;
+		break;
+	case SURPRESA://Gera um objecto dentro do intervalo de probabilidades dos objectos excepto os objectos surpresa e granada;
+		tipoGerado = rand() % PROB_O_COLA;
+		if (tipoGerado < PROB_ALIMENTO) {
+			jogo.jogadores[indiceCobra].tamanho++;
+			jogo.jogadores[indiceCobra].porAparecer++;
+			return 1;
+		}
+		else if (tipoGerado < PROB_GELO) {
+			jogo.jogadores[indiceCobra].tamanho--;
+			return 1;
+		}
+		else if (tipoGerado < PROB_OLEO) {
+			jogo.jogadores[indiceCobra].estadoJogador = LEBRE;
+			return 1;
+		}
+		else if (tipoGerado < PROB_COLA) {
+			jogo.jogadores[indiceCobra].estadoJogador = TARTARUGA;
+			return 1;
+		}
+		else if (tipoGerado < PROB_VODKA) {
+			jogo.jogadores[indiceCobra].estadoJogador = BEBADO;
+			return 1;
+		}
+		else if (tipoGerado < PROB_O_VODKA) {
+			for (int i = 0; i<jogo.config.N; i++)
+					if (i != indiceCobra)
+						jogo.jogadores[i].estadoJogador = BEBADO;
+		}
+		else if (tipoGerado < PROB_O_OLEO) {
+			for (int i = 0; i<jogo.config.N; i++)
+				if (i != indiceCobra)
+					jogo.jogadores[i].estadoJogador = LEBRE;
+		}
+		else if (tipoGerado < PROB_O_COLA) {
+			for (int i = 0; i<jogo.config.N; i++)
+				if (i != indiceCobra)
+					jogo.jogadores[i].estadoJogador = TARTARUGA;
+		}
+		break;
+	default://colisão com outros jogadores
+		break;
+	}
+}
+
 //Gera as posições da cobra no mapa verificando se há colisões com paredes e fazendo a respectiva alteração á cobra
 void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int jogador) {
 	int posXGerada, posYGerada, dirGerada;
@@ -472,6 +555,20 @@ void geraObjecto(int indice) {
 void mudaDirecaoJogador(int direcao, int pid, int jogador) {
 	int posicao;
 	posicao = procuraJogador(pid, jogador);
+	//Se estiver sob o efeito da vodka deve inverter as direções enviadas
+	if (jogo.jogadores[posicao].estadoJogador == BEBADO) {
+		switch (direcao)
+		{
+		case CIMA:direcao = BAIXO;
+			break;
+		case BAIXO:direcao = CIMA;
+			break;
+		case ESQUERDA:direcao = DIREITA;
+			break;
+		case DIREITA:direcao = ESQUERDA;
+			break;
+		}
+	}
 	switch (direcao)
 	{
 	case CIMA:if(jogo.jogadores[posicao].direcao !=BAIXO)
