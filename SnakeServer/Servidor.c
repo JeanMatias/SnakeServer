@@ -22,13 +22,14 @@ typedef struct {
 /* ----------------------------------------------------- */
 Jogador *listaJogadores;//para usar mais tarde com o Registo
 Jogo jogo;
+Cliente clientes[MAXCLIENTES];
 
 DWORD WINAPI moveCobras(LPVOID param);
 void lePedidoDaFila(Pedido *param);
 void resetDadosJogo();
 void preparaMapaJogo();
 void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int jogador);
-int Cria_Jogo(ConfigInicial param, int pid);
+int Cria_Jogo(ConfigInicial param, int pid, TCHAR username[SIZE_USERNAME]);
 int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador);
 int IniciaJogo(int pid);
 void mudaDirecaoJogador(int direcao, int pid, int jogador);
@@ -37,6 +38,9 @@ DWORD WINAPI gestorObjectos(LPVOID param);
 void criaObjectosMapaInicial(void);
 int procuraObjecto(int linha, int coluna);
 void geraObjecto(int indice);
+int registaCliente(int pid, int remoto);
+int procuraClientePorPid(int pid);
+int criaMemoriaPartilhadaResposta(int pid, int indice);
 
 
 /* ----------------------------------------------------- */
@@ -45,6 +49,9 @@ void geraObjecto(int indice);
 int _tmain(int argc, LPTSTR argv[]) {
 	
 	Pedido aux;
+	Resposta aux2;
+	int indice;
+	int resultado;
 
 #ifdef UNICODE
 	_setmode(_fileno(stdin), _O_WTEXT);
@@ -68,19 +75,78 @@ int _tmain(int argc, LPTSTR argv[]) {
 		_tprintf(TEXT("Pid:%d CodigoMSG:%d\n"), aux.pid,aux.codigoPedido);
 		switch (aux.codigoPedido)
 		{
-		case CRIARJOGO:
-			Cria_Jogo(aux.config, aux.pid);
-			//criar Mapa do jogo
-			preparaMapaJogo(aux);
+		case REGISTACLIENTELOCAL:indice = registaCliente(aux.pid, FALSE);
+							if (indice != -1) {
+								aux2.resposta = SUCESSO;
+								notificaCliente(indice, aux2);
+							}
 			break;
-		case ASSOCIAR_JOGADOR1:
-			AssociaJogo(aux.username, aux.pid, JOGADOR1);
+		case REGISTACLIENTEREMTO:registaCliente(aux.pid, TRUE);
 			break;
-		case ASSOCIAR_JOGADOR2:
-			AssociaJogo(aux.username, aux.pid, JOGADOR2);
+		case CRIARJOGO:indice = procuraClientePorPid(aux.pid);
+			resultado = Cria_Jogo(aux.config, aux.pid, aux.username);
+			if (resultado == AGORANAO) {
+				aux2.resposta = INSUCESSO;
+				notificaCliente(indice, aux2);
+			}
+			else {
+				aux2.resposta = SUCESSO;
+				aux2.valor = resultado;//metemos no valor da resposta o valor que vai aparecer no mapa para esta cobra 
+				notificaCliente(indice, aux2); //          para que o cliente saiba a cor com que a vai desenhar
+			}
 			break;
-		case INICIARJOGO:
-			IniciaJogo(aux.pid);
+		case ASSOCIAR_JOGADOR1:indice = procuraClientePorPid(aux.pid);
+				resultado = AssociaJogo(aux.username, aux.pid, JOGADOR1);
+				if (resultado == AGORANAO) {
+					aux2.resposta = INSUCESSO;
+					aux2.valor = AGORANAO;
+					notificaCliente(indice, aux2);
+				}
+				else if (resultado == JOGOCHEIO) {
+					aux2.resposta = INSUCESSO;
+					aux2.valor = JOGOCHEIO;
+					notificaCliente(indice, aux2);
+				}
+				else {
+					aux2.resposta = SUCESSO;
+					aux2.valor = resultado;//metemos no valor da resposta o valor que vai aparecer no mapa para esta cobra 
+					notificaCliente(indice, aux2); //          para que o cliente saiba a cor com que a vai desenhar
+				}
+			break;
+		case ASSOCIAR_JOGADOR2:indice = procuraClientePorPid(aux.pid);
+				resultado = AssociaJogo(aux.username, aux.pid, JOGADOR2);
+				if (resultado == AGORANAO) {
+					aux2.resposta = INSUCESSO;
+					aux2.valor = AGORANAO;
+					notificaCliente(indice, aux2);
+				}
+				else if (resultado == JOGOCHEIO) {
+					aux2.resposta = INSUCESSO;
+					aux2.valor = JOGOCHEIO;
+					notificaCliente(indice, aux2);
+				}
+				else {
+					aux2.resposta = SUCESSO;
+					aux2.valor = resultado;//metemos no valor da resposta o valor que vai aparecer no mapa para esta cobra 
+					notificaCliente(indice, aux2); //          para que o cliente saiba a cor com que a vai desenhar
+				}
+				break;
+		case INICIARJOGO:indice = procuraClientePorPid(aux.pid);
+			resultado = IniciaJogo(aux.pid);
+			if (resultado == AGORANAO) {
+				aux2.resposta = INSUCESSO;
+				aux2.valor = AGORANAO;
+				notificaCliente(indice, aux2);
+			}
+			else if (resultado == CRIADORERRADO) {
+				aux2.resposta = INSUCESSO;
+				aux2.valor = CRIADORERRADO;
+				notificaCliente(indice, aux2);
+			}
+			else {
+				aux2.resposta = SUCESSO;
+				notificaCliente(indice, aux2);
+			}
 			break;
 		case CIMA:
 		case BAIXO:
@@ -274,6 +340,8 @@ DWORD WINAPI moveCobras(LPVOID param) {
 	}
 }
 
+
+
 //Função que trata colisões chamada quando a cobra vai entrar numa casa do mapa que não está vazia,
 //devolve 1 se deve desenhar a cobra na posição que vai entrar ou não.
 int trataColisao(int linha,int coluna, int indiceCobra) {
@@ -408,27 +476,35 @@ long random_at_most(long max) {
 }
 
 int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador) {
-	
+	int vagaUsada;
 	//Se não existir jogo criado ou não existirem vagas
-	if ((jogo.estadoJogo != ASSOCIACAOJOGO) || ((jogo.config.N - jogo.vagasJogadores) == 0)) {
+	if (jogo.estadoJogo != ASSOCIACAOJOGO) {
 		_tprintf(TEXT("**********ERRO ASSOCIAR JOGO**********\n"));
-		return 0;
+		return AGORANAO;
 	}
-
+	else if ((jogo.config.N - jogo.vagasJogadores) == 0) {
+		_tprintf(TEXT("**********ERRO ASSOCIAR JOGO**********\n"));
+		return JOGOCHEIO;
+	}
+	vagaUsada = (jogo.vagasJogadores+1) * 1000;
 	criaCobra(username, jogo.vagasJogadores,pid,jogador);
 	jogo.vagasJogadores++;
 		
-	return 1;
+	return vagaUsada;
 }
 
 int IniciaJogo(int pid) {
 	DWORD tid;
 	HANDLE hThread; 
-
-	//Se não for o computador que criou o jogo não pode dar inicio a este
-	if (!(jogo.pidCriador==pid) && (jogo.estadoJogo == ASSOCIACAOJOGO)){
+	
+	if (jogo.estadoJogo != ASSOCIACAOJOGO){
 		_tprintf(TEXT("**********ERRO INICIAR JOGO**********\n"));
-		return 0;
+		return AGORANAO;
+	}
+	//Se não for o computador que criou o jogo não pode dar inicio a este
+	if (jogo.pidCriador != pid) {
+		_tprintf(TEXT("**********ERRO INICIAR JOGO**********\n"));
+		return CRIADORERRADO;
 	}
 	//Se for, criar as threads de mover as cobras, de gerir objectos e gerir cobras automaticas e notificar jogadores
 	jogo.estadoJogo = DECORRERJOGO;
@@ -442,23 +518,27 @@ int IniciaJogo(int pid) {
 	return 1;
 }
 
-int Cria_Jogo(ConfigInicial param, int pid) {
-	
+int Cria_Jogo(ConfigInicial param, int pid, TCHAR username[SIZE_USERNAME]) {
+	int vagaUsada;
 	if ((jogo.estadoJogo != CRIACAOJOGO)) {
-		return 0;
+		return AGORANAO;
 	}
 
+	//preparar dados do jogo e mudar estado
 	jogo.estadoJogo = ASSOCIACAOJOGO;
 	jogo.config = param;
 	jogo.pidCriador = pid;
 	jogo.vagasJogadores = 0;
 	vistaPartilhaGeral->colunas = param.C;
 	vistaPartilhaGeral->linhas = param.L;
-	//defenir as configs por defeito dos objetos
-	for (int i = 0; i < NUMTIPOOBJECTOS; i++)
-		jogo.configObjectos[i].S = SEGUNDOSMAPA;
+	//preparar mapa
+	preparaMapaJogo();
 
-	return 1;
+	vagaUsada = (jogo.vagasJogadores + 1) * 1000;
+	criaCobra(username, jogo.vagasJogadores, pid, JOGADOR1);
+	jogo.vagasJogadores++;
+
+	return vagaUsada;
 }
 
 void preparaMapaJogo() {
@@ -549,6 +629,55 @@ void geraObjecto(int indice) {
 	jogo.objectosMapa[indice].coluna = posXGerada;
 	jogo.objectosMapa[indice].segundosRestantes = jogo.configObjectos[jogo.objectosMapa[indice].Tipo - 1].S;
 	vistaPartilhaGeral->mapa[posYGerada][posXGerada] = jogo.objectosMapa[indice].Tipo;
+}
+
+int criaMemoriaPartilhadaResposta(int pid, int indice) {
+	TCHAR aux[TAM_BUFFER];
+	TCHAR aux2[TAM_BUFFER];
+
+	//concatenar pid com nome da memoria para ficar com um nome unico
+	_stprintf_s(aux, TAM_BUFFER, NOME_MEM_RESPOSTA, pid);
+
+	clientes[indice].hMemResposta = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(Resposta), aux);
+
+	clientes[indice].vistaResposta = (Resposta*)MapViewOfFile(clientes[indice].hMemResposta, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Resposta));
+
+	//concatenar pid com nome do evento para ficar com um nome unico
+	_stprintf_s(aux2, TAM_BUFFER, NOME_EVNT_RESPOSTA, pid);
+	clientes[indice].hEventoResposta = CreateEvent(NULL, TRUE, FALSE, aux2);
+
+	if (clientes[indice].hMemResposta == NULL || clientes[indice].hEventoResposta == NULL) {
+		_tprintf(TEXT("[Erro] Criação de objectos do Windows(%d)\n"), GetLastError());
+		return -1;
+	}
+	return 1;
+}
+
+int registaCliente(int pid,int remoto) {
+	int indice;
+	//procurar uma vaga no array de Clientes (pid=0)
+	indice = procuraClientePorPid(0);
+	if (indice == -1)
+		return -1;
+	clientes[indice].pid = pid;
+	clientes[indice].remoto = remoto;
+	if (criaMemoriaPartilhadaResposta(pid, indice) == -1) {
+		_tprintf(TEXT("****************ERRO*******************"));
+	}
+	return indice;
+}
+
+int notificaCliente(int indice, Resposta resp) {
+	*clientes[indice].vistaResposta = resp;
+	SetEvent(clientes[indice].hEventoResposta);
+}
+
+int procuraClientePorPid(int pid) {
+	for (int i = 0; i < MAXCLIENTES; i++) {
+		if (clientes[i].pid == pid)
+			return i;
+	}
+	return -1;
 }
 
 //altera a direcao do jogador 1 ou 2 de determinado pid, se a mudança de direção for inversa a actual ignora o movimento
