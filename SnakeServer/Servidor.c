@@ -161,7 +161,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 	_gettch();
 
 
-	fechaMemoriaPartilhada();
+	fechaMemoriaPartilhadaGeral();
 	
 	return 0;
 }
@@ -486,11 +486,11 @@ int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador) {
 		_tprintf(TEXT("**********ERRO ASSOCIAR JOGO**********\n"));
 		return JOGOCHEIO;
 	}
-	vagaUsada = (jogo.vagasJogadores+1) * 1000;
-	criaCobra(username, jogo.vagasJogadores,pid,jogador);
+	vagaUsada = (jogo.vagasJogadores+1) * 100;
+	criaCobra(username, vagaUsada,pid,jogador);
 	jogo.vagasJogadores++;
 		
-	return vagaUsada;
+	return jogo.vagasJogadores;
 }
 
 int IniciaJogo(int pid) {
@@ -534,7 +534,7 @@ int Cria_Jogo(ConfigInicial param, int pid, TCHAR username[SIZE_USERNAME]) {
 	//preparar mapa
 	preparaMapaJogo();
 
-	vagaUsada = (jogo.vagasJogadores + 1) * 1000;
+	vagaUsada = (jogo.vagasJogadores + 1) * 100;
 	criaCobra(username, jogo.vagasJogadores, pid, JOGADOR1);
 	jogo.vagasJogadores++;
 
