@@ -7,6 +7,23 @@
 #include "..\..\SnakeDLL\SnakeDLL\SnakeDLL.h"
 
 typedef struct {
+	int pid;
+	int remoto;
+	HANDLE hEventoResposta;
+	HANDLE hMemResposta;
+	Resposta *vistaResposta;
+	HANDLE hPipe;
+}Cliente;
+
+//Estrutura para manutenção dos objectos no jogo
+typedef struct {
+	int Tipo;				//Tipo de Objecto (1-Alimento, 2-Gelo, 3-Granada, 4-Vodka, 5-Oleo, 6-Cola, 7-OVodka, 8-OOleo, 9-OCola)
+	int linha;				//Posição no mapa
+	int coluna;				//Posição no mapa
+	int segundosRestantes;	//Segundos que restam ao objecto para este desaparecer
+}Objecto;
+
+typedef struct {
 	TCHAR username[SIZE_USERNAME];
 	int pontuacaoTotal;
 	int numJogos;
@@ -32,6 +49,8 @@ typedef struct {
 	int pidCriador;
 	int estadoJogo;
 	int vagasJogadores;
+	int cobrasVivas;
+	int tipoJogo;
 	ConfigInicial config;
 	ConfigObjecto configObjectos[NUMTIPOOBJECTOS];
 	Cobras jogadores[MAXJOGADORES];
@@ -51,8 +70,11 @@ HANDLE hPodeEscreverPedidoServidor;
 HANDLE hEventoMapaServidor;
 MemGeral *vistaPartilhaGeralServidor;
 
-
+/* ----------------------------------------------------- */
+/*  PROTOTIPO DE FUNÇÕES								 */
+/* ----------------------------------------------------- */
 DWORD WINAPI moveCobras(LPVOID param);
+DWORD WINAPI gestorObjectos(LPVOID param);
 void lePedidoDaFila(Pedido *param);
 void resetDadosJogo();
 void preparaMapaJogo();
@@ -62,7 +84,6 @@ int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador);
 int IniciaJogo(int pid);
 void mudaDirecaoJogador(int direcao, int pid, int jogador);
 int procuraJogador(int pid, int jogador);
-DWORD WINAPI gestorObjectos(LPVOID param);
 void criaObjectosMapaInicial(void);
 int procuraObjecto(int linha, int coluna);
 void geraObjecto(int indice);
@@ -71,6 +92,8 @@ int procuraClientePorPid(int pid);
 int criaMemoriaPartilhadaResposta(int pid, int indice);
 int criaMemoriaPartilhada(void);
 void notificaCliente(int indice, Resposta resp);
+int trataColisao(int linha, int coluna, int indiceCobra);
+int acabouJogo();
 
 
 /* ----------------------------------------------------- */
@@ -200,6 +223,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 void resetDadosJogo() {
 	jogo.estadoJogo = CRIACAOJOGO;
 	jogo.vagasJogadores = 0;
+	jogo.cobrasVivas = 0;
 }
 
 void lePedidoDaFila(Pedido *param){
@@ -229,33 +253,36 @@ void lePedidoDaFila(Pedido *param){
 /* ---------------------------------------------------------------- */
 DWORD WINAPI moveCobras(LPVOID param) {
 	int posArrayAux, auxLinha, auxColuna;
-	int idCobraNoMapa, posArrayCobra = (int)param;
-	idCobraNoMapa = (posArrayCobra + 1) * 100;
-	while (1) {
-		if (jogo.jogadores[posArrayCobra].estadoJogador != MORTO) {
-			for (int i = 0; i < MAXCLIENTES; i++) {
-				WaitForSingleObject(hSemaforoMapaServidor, INFINITE);
-			}
+	int idCobraNoMapaDefeito, idCobraNoMapa, posArrayCobra = (int)param;
+	idCobraNoMapaDefeito = (posArrayCobra + 1) * 100;//calcular o id da cobra no mapa 
+	while (jogo.jogadores[posArrayCobra].estadoJogador != MORTO) {
 			//tratar os estados da cobra
 			switch (jogo.jogadores[posArrayCobra].estadoJogador)
 			{
 			case TARTARUGA:Sleep(LENTIDAO_TARTARUGA);
+				idCobraNoMapa = idCobraNoMapaDefeito + (TARTARUGA * 10);
 				jogo.jogadores[posArrayCobra].duracaoEfeito--;
 				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0)
 					jogo.jogadores[posArrayCobra].estadoJogador = VIVO;
 				break;
 			case LEBRE:Sleep(LENTIDAO_LEBRE);
+				idCobraNoMapa = idCobraNoMapaDefeito + (LEBRE * 10);
 				jogo.jogadores[posArrayCobra].duracaoEfeito--;
 				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0)
 					jogo.jogadores[posArrayCobra].estadoJogador = VIVO;
 				break;
 			case BEBADO:Sleep(LENTIDAO_NORMAL);
+				idCobraNoMapa = idCobraNoMapaDefeito + (BEBADO * 10);
 				jogo.jogadores[posArrayCobra].duracaoEfeito--;
 				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0)
 					jogo.jogadores[posArrayCobra].estadoJogador = VIVO;
 				break;
 			default:Sleep(LENTIDAO_NORMAL);
+				idCobraNoMapa = idCobraNoMapaDefeito;
 				break;
+			}
+			for (int i = 0; i < MAXCLIENTES; i++) {
+				WaitForSingleObject(hSemaforoMapaServidor, INFINITE);
 			}
 			switch (jogo.jogadores[posArrayCobra].direcao)
 			{
@@ -268,25 +295,62 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha-1;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
-					//Apagar a cauda do mapa (se comeu gelo na iteração anterior apaga duas posições)
+					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
 					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
+						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
+						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
+						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						jogo.jogadores[posArrayCobra].tamanho--;
+					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
+					//meter o id da cobra no lugar antido da cebeça sem a direção
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z+1][0];
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z+1][1];
 					}
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha - 1;
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-					vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa;		
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo temos de mover duas vezes todas as posições do array
+						posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
+						for (int z = 0; z < posArrayAux-1; z++) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][1];
+						}
+						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
+					}
+					if (vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] != ESPACOVAZIO) {
+						if (trataColisao(auxLinha - 1, auxColuna, posArrayCobra)) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha - 1;
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
+							vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
+						}
+						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
+							jogo.cobrasVivas--;
+							if (acabouJogo()) {//não acabou o jogo, apagar esta cobra do mapa.
+								for (int i = 0; i <= posArrayAux; i++) {
+									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
+									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
+									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+								}
+							}
+							else {}//enviar pontuações aos clientes ligados 
+						}
+					}
+					else {
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha - 1;
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
+						vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
+					}							
 				}					
 				break;
 			case BAIXO://Coluna mantem-se, muda de linha(+1)
@@ -298,25 +362,62 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
-					//Apagar a cauda do mapa
+					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
 					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
+						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
+						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
+						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						jogo.jogadores[posArrayCobra].tamanho--;
+					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
+					//meter o id da cobra no lugar antido da cebeça sem a direção
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][1];
 					}
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-					vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa;
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo temos de mover duas vezes todas as posições do array
+						posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
+						for (int z = 0; z < posArrayAux - 1; z++) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][1];
+						}
+						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
+					}
+					if (vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] != ESPACOVAZIO) {
+						if (trataColisao(auxLinha + 1, auxColuna, posArrayCobra)) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
+							vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
+						}
+						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
+							jogo.cobrasVivas--;
+							if (acabouJogo()) {//não acabou o jogo, apagar esta cobra do mapa.
+								for (int i = 0; i <= posArrayAux; i++) {
+									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
+									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
+									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+								}
+							}
+							else {}//enviar pontuações aos clientes ligados 
+						}
+					}
+					else {
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
+						vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
+					}
 				}
 				break;
 			case ESQUERDA://Linha mantem-se, muda de coluna(-1)
@@ -328,25 +429,62 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
-					//Apagar a cauda do mapa
+					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
 					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
+						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
+						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
+						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						jogo.jogadores[posArrayCobra].tamanho--;
+					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
+					//meter o id da cobra no lugar antido da cebeça sem a direção
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][1];
 					}
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa;
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo temos de mover duas vezes todas as posições do array
+						posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
+						for (int z = 0; z < posArrayAux - 1; z++) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][1];
+						}
+						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
+					}
+					if (vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] != ESPACOVAZIO) {
+						if (trataColisao(auxLinha, auxColuna - 1, posArrayCobra)) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
+							vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
+						}
+						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
+							jogo.cobrasVivas--;
+							if (acabouJogo()) {//não acabou o jogo, apagar esta cobra do mapa.
+								for (int i = 0; i <= posArrayAux; i++) {
+									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
+									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
+									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+								}
+							}
+							else {}//enviar pontuações aos clientes ligados 
+						}
+					}
+					else {
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
+						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
+					}
 				}
 				break;
 			case DIREITA://Linha mantem-se, muda de coluna(+1)
@@ -358,29 +496,65 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
-					//Apagar a cauda do mapa
+					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
 					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
+						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
+						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
+						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						jogo.jogadores[posArrayCobra].tamanho--;
+					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
+					//meter o id da cobra no lugar antido da cebeça sem a direção
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][1];
 					}
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
-					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa;
+					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo temos de mover duas vezes todas as posições do array
+						posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
+						for (int z = 0; z < posArrayAux - 1; z++) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
+							jogo.jogadores[posArrayCobra].posicoesCobra[z][1] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][1];
+						}
+						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
+					}
+					if (vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] != ESPACOVAZIO) {
+						if (trataColisao(auxLinha , auxColuna + 1, posArrayCobra)) {
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
+							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
+							vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
+						}
+						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
+							jogo.cobrasVivas--;
+							if (acabouJogo()) {//não acabou o jogo, apagar esta cobra do mapa.
+								for (int i = 0; i <= posArrayAux; i++) {
+									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
+									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
+									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+								}
+							}
+							else {}//enviar pontuações aos clientes ligados 
+						}
+					}
+					else {
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
+						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
+						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
+					}
 				}
 				break;
 			}
-		}
 		_tprintf(TEXT("**********ITERAÇÂO DO MAPA**********\n"));
 		SetEvent(hEventoMapaServidor);
 		ResetEvent(hEventoMapaServidor);
@@ -388,6 +562,23 @@ DWORD WINAPI moveCobras(LPVOID param) {
 	}
 }
 
+//Função que detecta fim de jogo
+//devolve 1 se continua e 0 se acaba
+int acabouJogo() {
+	switch (jogo.tipoJogo) {
+	case SINGLEPLAYER:jogo.estadoJogo = FINALJOGO;
+		return 0;//acabou
+		break;
+	case MULTIPLAYER:if (jogo.cobrasVivas == 1) {
+						jogo.estadoJogo = FINALJOGO;
+						return 0;//acabou
+					}
+					else
+						 return 1;//continua
+		break;
+	}
+	
+}
 
 
 //Função que trata colisões chamada quando a cobra vai entrar numa casa do mapa que não está vazia,
@@ -400,10 +591,12 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 		break;
 	case ALIMENTO:jogo.jogadores[indiceCobra].tamanho++;
 		jogo.jogadores[indiceCobra].porAparecer++;
+		jogo.jogadores[indiceCobra].pontuacao += 2;
 		return 1;
 		break;
-	case GELO:jogo.jogadores[indiceCobra].tamanho--;
+	case GELO://jogo.jogadores[indiceCobra].tamanho--; tem de ser tratado no movecobra para se conseguir actualizar as posições da cobra no array...
 		jogo.jogadores[indiceCobra].comeuGelo = TRUE;
+		jogo.jogadores[indiceCobra].pontuacao -= 2;
 		return 1;
 		break;
 	case GRANADA:jogo.jogadores[indiceCobra].estadoJogador = MORTO;
@@ -509,13 +702,14 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int jogador) {
 	int posXGerada, posYGerada, dirGerada, idCobraMapa;
 	//Gera posições até encontrar uma vaga;
+	/*
 	while (1) {
 		posXGerada = random_at_most((long)jogo.config.C);
 		posYGerada = random_at_most((long)jogo.config.L);
 		if (vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] == ESPACOVAZIO)
 			break;
-	}
-
+	}*/
+	posXGerada = posYGerada = 1;
 	//Na posição 0 do array de posições ficam as Linhas e na 1 ficam as Colunas
 	jogo.jogadores[vaga].posicoesCobra[0][0] = posYGerada;
 	jogo.jogadores[vaga].posicoesCobra[0][1] = posXGerada;
@@ -524,8 +718,8 @@ void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int jogador) {
 	vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] = idCobraMapa;
 
 	dirGerada = random_at_most(3) + 1;
-	jogo.jogadores[vaga].direcao = dirGerada;
-
+	//jogo.jogadores[vaga].direcao = dirGerada;
+	jogo.jogadores[vaga].direcao = DIREITA;
 	jogo.jogadores[vaga].porAparecer = jogo.config.T - 1;
 	jogo.jogadores[vaga].estadoJogador = VIVO;
 	jogo.jogadores[vaga].pontuacao = 0;
@@ -594,7 +788,7 @@ int IniciaJogo(int pid) {
 		hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)moveCobras, (LPVOID)i, 0, &tid);
 	}
 
-	hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gestorObjectos,NULL, 0, &tid);
+	//hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gestorObjectos,NULL, 0, &tid);
 	
 	
 	return 1;
@@ -671,6 +865,7 @@ int procuraObjecto(int linha, int coluna) {
 		if ((jogo.objectosMapa[i].coluna == coluna) && (jogo.objectosMapa[i].linha == linha))
 			return i;
 	}
+	return -1;
 }
 
 void geraObjecto(int indice) {
