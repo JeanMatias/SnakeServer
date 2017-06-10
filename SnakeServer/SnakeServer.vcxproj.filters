@@ -22,4 +22,9 @@
   <ItemGroup>
     <Library Include="..\Debug\SnakeDLL.lib" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Servidor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
 </Project>

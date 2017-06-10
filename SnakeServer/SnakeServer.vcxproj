@@ -151,6 +151,9 @@
   <ItemGroup>
     <Library Include="..\Debug\SnakeDLL.lib" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Servidor.h" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

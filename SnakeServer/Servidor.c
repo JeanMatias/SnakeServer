@@ -1,100 +1,4 @@
-#include <windows.h>
-#include <tchar.h>
-#include <io.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h> 
-#include "..\..\SnakeDLL\SnakeDLL\SnakeDLL.h"
-
-typedef struct {
-	int pid;
-	int remoto;
-	HANDLE hEventoResposta;
-	HANDLE hMemResposta;
-	Resposta *vistaResposta;
-	HANDLE hPipe;
-}Cliente;
-
-//Estrutura para manutenção dos objectos no jogo
-typedef struct {
-	int Tipo;				//Tipo de Objecto (1-Alimento, 2-Gelo, 3-Granada, 4-Vodka, 5-Oleo, 6-Cola, 7-OVodka, 8-OOleo, 9-OCola)
-	int linha;				//Posição no mapa
-	int coluna;				//Posição no mapa
-	int segundosRestantes;	//Segundos que restam ao objecto para este desaparecer
-}Objecto;
-
-typedef struct {
-	TCHAR username[SIZE_USERNAME];
-	int pontuacaoTotal;
-	int numJogos;
-	int numVitorias;
-}Jogador;
-
-typedef struct {
-	int pid;
-	int jogador;
-	TCHAR username[SIZE_USERNAME];
-	int tamanho;
-	int porAparecer;
-	int comeuGelo;
-	int duracaoEfeito;
-	int pontuacao;
-	int direcao;
-	int estadoJogador;
-	int posicoesCobra[MAX_COLUNAS * MAX_LINHAS][2];
-}Cobras;
-
-//mais tarde ver a necessidade de sincronização a aceder esta estrutura no servidor
-typedef struct {
-	int pidCriador;
-	int estadoJogo;
-	int vagasJogadores;
-	int cobrasVivas;
-	int tipoJogo;
-	ConfigInicial config;
-	ConfigObjecto configObjectos[NUMTIPOOBJECTOS];
-	Cobras jogadores[MAXJOGADORES];
-	Objecto objectosMapa[MAXOBJECTOS];
-}Jogo;
-
-/* ----------------------------------------------------- */
-/*  VARIÁVEIS GLOBAIS									 */
-/* ----------------------------------------------------- */
-Jogador *listaJogadores;//para usar mais tarde com o Registo
-Jogo jogo;
-Cliente clientes[MAXCLIENTES];
-HANDLE hMemoriaGeral;
-HANDLE hSemaforoMapaServidor;
-HANDLE hPodeLerPedidoServidor;
-HANDLE hPodeEscreverPedidoServidor;
-HANDLE hEventoMapaServidor;
-MemGeral *vistaPartilhaGeralServidor;
-
-/* ----------------------------------------------------- */
-/*  PROTOTIPO DE FUNÇÕES								 */
-/* ----------------------------------------------------- */
-DWORD WINAPI moveCobras(LPVOID param);
-DWORD WINAPI gestorObjectos(LPVOID param);
-void lePedidoDaFila(Pedido *param);
-void resetDadosJogo();
-void preparaMapaJogo();
-void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int jogador);
-int Cria_Jogo(ConfigInicial param, int pid, TCHAR username[SIZE_USERNAME]);
-int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador);
-int IniciaJogo(int pid);
-void mudaDirecaoJogador(int direcao, int pid, int jogador);
-int procuraJogador(int pid, int jogador);
-void criaObjectosMapaInicial(void);
-int procuraObjecto(int linha, int coluna);
-void geraObjecto(int indice);
-int registaCliente(int pid, int remoto);
-int procuraClientePorPid(int pid);
-int criaMemoriaPartilhadaResposta(int pid, int indice);
-int criaMemoriaPartilhada(void);
-void notificaCliente(int indice, Resposta resp);
-int trataColisao(int linha, int coluna, int indiceCobra);
-int acabouJogo();
-
+#include "Servidor.h"
 
 /* ----------------------------------------------------- */
 /*  Função MAIN											 */
@@ -128,16 +32,16 @@ int _tmain(int argc, LPTSTR argv[]) {
 		_tprintf(TEXT("Pid:%d CodigoMSG:%d\n"), aux.pid,aux.codigoPedido);
 		switch (aux.codigoPedido)
 		{
-		case REGISTACLIENTELOCAL:indice = registaCliente(aux.pid, FALSE);
+		case REGISTACLIENTELOCAL:indice = registaCliente(aux.pid, aux.tid, FALSE);
 							if (indice != -1) {
 								aux2.resposta = SUCESSO;
 								notificaCliente(indice, aux2);
 							}
 			break;
-		case REGISTACLIENTEREMTO:registaCliente(aux.pid, TRUE);
+		case REGISTACLIENTEREMTO:registaCliente(aux.pid, aux.tid, TRUE);
 			break;
-		case CRIARJOGO:indice = procuraClientePorPid(aux.pid);
-			resultado = Cria_Jogo(aux.config, aux.pid, aux.username);
+		case CRIARJOGO:indice = procuraCliente(aux.pid, aux.tid);
+			resultado = Cria_Jogo(aux.config, aux.pid, aux.tid, aux.username);
 			if (resultado == AGORANAO) {
 				aux2.resposta = INSUCESSO;
 				notificaCliente(indice, aux2);
@@ -148,8 +52,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 				notificaCliente(indice, aux2); //          para que o cliente saiba a cor com que a vai desenhar
 			}
 			break;
-		case ASSOCIAR_JOGADOR1:indice = procuraClientePorPid(aux.pid);
-				resultado = AssociaJogo(aux.username, aux.pid, JOGADOR1);
+		case ASSOCIAR_JOGADOR1:indice = procuraCliente(aux.pid, aux.tid);
+				resultado = AssociaJogo(aux.username, aux.pid, aux.tid, JOGADOR1);
 				if (resultado == AGORANAO) {
 					aux2.resposta = INSUCESSO;
 					aux2.valor = AGORANAO;
@@ -166,8 +70,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 					notificaCliente(indice, aux2); //          para que o cliente saiba a cor com que a vai desenhar
 				}
 			break;
-		case ASSOCIAR_JOGADOR2:indice = procuraClientePorPid(aux.pid);
-				resultado = AssociaJogo(aux.username, aux.pid, JOGADOR2);
+		case ASSOCIAR_JOGADOR2:indice = procuraCliente(aux.pid, aux.tid);
+				resultado = AssociaJogo(aux.username, aux.pid, aux.tid, JOGADOR2);
 				if (resultado == AGORANAO) {
 					aux2.resposta = INSUCESSO;
 					aux2.valor = AGORANAO;
@@ -184,8 +88,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 					notificaCliente(indice, aux2); //          para que o cliente saiba a cor com que a vai desenhar
 				}
 				break;
-		case INICIARJOGO:indice = procuraClientePorPid(aux.pid);
-			resultado = IniciaJogo(aux.pid);
+		case INICIARJOGO:indice = procuraCliente(aux.pid, aux.tid);
+			resultado = IniciaJogo(aux.pid, aux.tid);
 			if (resultado == AGORANAO) {
 				aux2.resposta = INSUCESSO;
 				aux2.valor = AGORANAO;
@@ -205,7 +109,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 		case BAIXO:
 		case ESQUERDA:
 		case DIREITA:
-			mudaDirecaoJogador(aux.codigoPedido, aux.pid, aux.jogador);
+			mudaDirecaoJogador(aux.codigoPedido, aux.pid, aux.tid, aux.jogador);
 			break;
 		default:
 			break;
@@ -231,6 +135,7 @@ void lePedidoDaFila(Pedido *param){
 	WaitForSingleObject(hPodeLerPedidoServidor, INFINITE);
 
 	param->pid = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].pid;
+	param->tid = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].tid;
 	param->jogador = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].jogador;
 	param->codigoPedido = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].codigoPedido;
 	param->config = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].config;
@@ -560,6 +465,8 @@ DWORD WINAPI moveCobras(LPVOID param) {
 		ResetEvent(hEventoMapaServidor);
 		ReleaseSemaphore(hSemaforoMapaServidor, MAXCLIENTES, NULL);
 	}
+
+	return 1;
 }
 
 //Função que detecta fim de jogo
@@ -577,7 +484,7 @@ int acabouJogo() {
 						 return 1;//continua
 		break;
 	}
-	
+	return 1;//continua
 }
 
 
@@ -699,17 +606,16 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 }
 
 //Gera as posições da cobra no mapa verificando se há colisões com paredes e fazendo a respectiva alteração á cobra
-void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int jogador) {
+void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int tid, int jogador) {
 	int posXGerada, posYGerada, dirGerada, idCobraMapa;
-	//Gera posições até encontrar uma vaga;
-	/*
+	
 	while (1) {
-		posXGerada = random_at_most((long)jogo.config.C);
-		posYGerada = random_at_most((long)jogo.config.L);
+		posXGerada = rand() % jogo.config.C;
+		posYGerada = rand() % jogo.config.L;
 		if (vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] == ESPACOVAZIO)
 			break;
-	}*/
-	posXGerada = posYGerada = 1;
+	}
+	//posXGerada = posYGerada = 1;
 	//Na posição 0 do array de posições ficam as Linhas e na 1 ficam as Colunas
 	jogo.jogadores[vaga].posicoesCobra[0][0] = posYGerada;
 	jogo.jogadores[vaga].posicoesCobra[0][1] = posXGerada;
@@ -717,41 +623,22 @@ void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int jogador) {
 	idCobraMapa = (vaga + 1) * 100;
 	vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] = idCobraMapa;
 
-	dirGerada = random_at_most(3) + 1;
-	//jogo.jogadores[vaga].direcao = dirGerada;
-	jogo.jogadores[vaga].direcao = DIREITA;
+	dirGerada = (rand() % 3) + 1;
+	jogo.jogadores[vaga].direcao = dirGerada;
 	jogo.jogadores[vaga].porAparecer = jogo.config.T - 1;
 	jogo.jogadores[vaga].estadoJogador = VIVO;
 	jogo.jogadores[vaga].pontuacao = 0;
 	jogo.jogadores[vaga].jogador = jogador;
 	jogo.jogadores[vaga].pid = pid;
+	jogo.jogadores[vaga].tid = tid;
 	jogo.jogadores[vaga].tamanho = jogo.config.T;
 	_tcscpy_s(jogo.jogadores[vaga].username, SIZE_USERNAME, username);
 	jogo.jogadores[vaga].comeuGelo = FALSE;
 }
 
-// Assumes 0 <= max <= RAND_MAX
-// Returns in the closed interval [0, max]
-long random_at_most(long max) {
-	unsigned long
-		// max <= RAND_MAX < ULONG_MAX, so this is okay.
-		num_bins = (unsigned long)max + 1,
-		num_rand = (unsigned long)RAND_MAX + 1,
-		bin_size = num_rand / num_bins,
-		defect = num_rand % num_bins;
 
-	long x;
-	do {
-		x = rand();
-	}
-	// This is carefully written not to overflow
-	while (num_rand - defect <= (unsigned long)x);
 
-	// Truncated division is intentional
-	return x / bin_size;
-}
-
-int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador) {
+int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int tid, int jogador) {
 	
 	//Se não existir jogo criado ou não existirem vagas
 	if (jogo.estadoJogo != ASSOCIACAOJOGO) {
@@ -763,14 +650,14 @@ int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int jogador) {
 		return JOGOCHEIO;
 	}
 	
-	criaCobra(username, jogo.vagasJogadores,pid,jogador);
+	criaCobra(username, jogo.vagasJogadores,pid,tid,jogador);
 	jogo.vagasJogadores++;
 		
 	return jogo.vagasJogadores;
 }
 
-int IniciaJogo(int pid) {
-	DWORD tid;
+int IniciaJogo(int pid, int tid) {
+	DWORD auxTid;
 	HANDLE hThread; 
 	
 	if (jogo.estadoJogo != ASSOCIACAOJOGO){
@@ -785,7 +672,7 @@ int IniciaJogo(int pid) {
 	//Se for, criar as threads de mover as cobras, de gerir objectos e gerir cobras automaticas e notificar jogadores
 	jogo.estadoJogo = DECORRERJOGO;
 	for (int i = 0; i < jogo.vagasJogadores; i++) {
-		hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)moveCobras, (LPVOID)i, 0, &tid);
+		hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)moveCobras, (LPVOID)i, 0, &auxTid);
 	}
 
 	//hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gestorObjectos,NULL, 0, &tid);
@@ -794,7 +681,7 @@ int IniciaJogo(int pid) {
 	return 1;
 }
 
-int Cria_Jogo(ConfigInicial param, int pid, TCHAR username[SIZE_USERNAME]) {
+int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAME]) {
 
 	if ((jogo.estadoJogo != CRIACAOJOGO)) {
 		return AGORANAO;
@@ -804,13 +691,14 @@ int Cria_Jogo(ConfigInicial param, int pid, TCHAR username[SIZE_USERNAME]) {
 	jogo.estadoJogo = ASSOCIACAOJOGO;
 	jogo.config = param;
 	jogo.pidCriador = pid;
+	jogo.tidCriador = tid;
 	jogo.vagasJogadores = 0;
 	vistaPartilhaGeralServidor->colunas = param.C;
 	vistaPartilhaGeralServidor->linhas = param.L;
 	//preparar mapa
 	preparaMapaJogo();
 
-	criaCobra(username, jogo.vagasJogadores, pid, JOGADOR1);
+	criaCobra(username, jogo.vagasJogadores, pid, tid, JOGADOR1);
 	jogo.vagasJogadores++;
 
 	return jogo.vagasJogadores;
@@ -925,25 +813,29 @@ int criaMemoriaPartilhada(void) {
 		_tprintf(TEXT("[Erro] Criação de objectos do Windows(%d)\n"), GetLastError());
 		return -1;
 	}
+	else if (GetLastError() == ERROR_ALREADY_EXISTS) {
+		_tprintf(TEXT("[Erro] Já existe servidor a correr\n"));
+		exit(-1);
+	}		
 
 	vistaPartilhaGeralServidor->fila.frente = 0;
 	vistaPartilhaGeralServidor->fila.tras = 0;
 	return 1;
 }
 
-int criaMemoriaPartilhadaResposta(int pid, int indice) {
+int criaMemoriaPartilhadaResposta(int pid, int tid, int indice) {
 	TCHAR aux[TAM_BUFFER];
 	TCHAR aux2[TAM_BUFFER];
 
 	//concatenar pid com nome da memoria para ficar com um nome unico
-	_stprintf_s(aux, TAM_BUFFER, NOME_MEM_RESPOSTA, pid);
+	_stprintf_s(aux, TAM_BUFFER, NOME_MEM_RESPOSTA, pid, tid);
 
 	clientes[indice].hMemResposta = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(Resposta), aux);
 
 	clientes[indice].vistaResposta = (Resposta*)MapViewOfFile(clientes[indice].hMemResposta, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(Resposta));
 
 	//concatenar pid com nome do evento para ficar com um nome unico
-	_stprintf_s(aux2, TAM_BUFFER, NOME_EVNT_RESPOSTA, pid);
+	_stprintf_s(aux2, TAM_BUFFER, NOME_EVNT_RESPOSTA, pid, tid);
 	clientes[indice].hEventoResposta = CreateEvent(NULL, TRUE, FALSE, aux2);
 
 	if (clientes[indice].hMemResposta == NULL || clientes[indice].hEventoResposta == NULL) {
@@ -953,15 +845,16 @@ int criaMemoriaPartilhadaResposta(int pid, int indice) {
 	return 1;
 }
 
-int registaCliente(int pid,int remoto) {
+int registaCliente(int pid, int tid, int remoto) {
 	int indice;
 	//procurar uma vaga no array de Clientes (pid=0)
-	indice = procuraClientePorPid(0);
+	indice = procuraCliente(0,0);
 	if (indice == -1)
 		return -1;
 	clientes[indice].pid = pid;
+	clientes[indice].tid = tid;
 	clientes[indice].remoto = remoto;
-	if (criaMemoriaPartilhadaResposta(pid, indice) == -1) {
+	if (criaMemoriaPartilhadaResposta(pid, tid, indice) == -1) {
 		_tprintf(TEXT("****************ERRO*******************"));
 	}
 	return indice;
@@ -972,18 +865,18 @@ void notificaCliente(int indice, Resposta resp) {
 	SetEvent(clientes[indice].hEventoResposta);
 }
 
-int procuraClientePorPid(int pid) {
+int procuraCliente(int pid, int tid) {
 	for (int i = 0; i < MAXCLIENTES; i++) {
-		if (clientes[i].pid == pid)
+		if (clientes[i].pid == pid && clientes[i].tid == tid)
 			return i;
 	}
 	return -1;
 }
 
 //altera a direcao do jogador 1 ou 2 de determinado pid, se a mudança de direção for inversa a actual ignora o movimento
-void mudaDirecaoJogador(int direcao, int pid, int jogador) {
+void mudaDirecaoJogador(int direcao, int pid, int tid, int jogador) {
 	int posicao;
-	posicao = procuraJogador(pid, jogador);
+	posicao = procuraJogador(pid, tid, jogador);
 	//Se estiver sob o efeito da vodka deve inverter as direções enviadas
 	if (jogo.jogadores[posicao].estadoJogador == BEBADO) {
 		switch (direcao)
@@ -1020,9 +913,9 @@ void mudaDirecaoJogador(int direcao, int pid, int jogador) {
 }
 
 //procura o jogador mencionado na lista de jogadores em jogo
-int procuraJogador(int pid, int jogador) {
+int procuraJogador(int pid, int tid, int jogador) {
 	for (int i = 0; i < jogo.config.N; i++) {
-		if (jogo.jogadores[i].pid == pid && jogo.jogadores[i].jogador == jogador) {
+		if (jogo.jogadores[i].pid == pid && jogo.jogadores[i].tid == tid && jogo.jogadores[i].jogador == jogador) {
 			_tprintf(TEXT("Posicao do jogador no array:%d\n"), i);
 			return i;
 		}
