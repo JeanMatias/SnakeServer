@@ -41,7 +41,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 		case REGISTACLIENTEREMTO:registaCliente(aux.pid, aux.tid, TRUE);
 			break;
 		case CRIARJOGO:indice = procuraCliente(aux.pid, aux.tid);
-			resultado = Cria_Jogo(aux.config, aux.pid, aux.tid, aux.username);
+			resultado = Cria_Jogo(aux.config, aux.pid, aux.tid, aux.username,aux.objectosConfig);
 			if (resultado == AGORANAO) {
 				aux2.resposta = INSUCESSO;
 				notificaCliente(indice, aux2);
@@ -110,6 +110,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 		case ESQUERDA:
 		case DIREITA:
 			mudaDirecaoJogador(aux.codigoPedido, aux.pid, aux.tid, aux.jogador);
+			break;
+		case SAIR:atendeSair(aux.pid, aux.tid);
 			break;
 		default:
 			break;
@@ -491,7 +493,7 @@ int acabouJogo() {
 //Função que trata colisões chamada quando a cobra vai entrar numa casa do mapa que não está vazia,
 //devolve 1 se a cobra não morreu, devolve 0 se morreu e assim efectuar as devidas alterações no mapa e detectar fim de jogo
 int trataColisao(int linha,int coluna, int indiceCobra) {
-	int tipoGerado, indiceOutraCobra;
+	int tipoGerado, indiceOutraCobra, indiceObjecto;
 	switch (vistaPartilhaGeralServidor->mapa[linha][coluna]) {
 	case PAREDE:jogo.jogadores[indiceCobra].estadoJogador = MORTO;
 		return 0;
@@ -499,46 +501,64 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 	case ALIMENTO:jogo.jogadores[indiceCobra].tamanho++;
 		jogo.jogadores[indiceCobra].porAparecer++;
 		jogo.jogadores[indiceCobra].pontuacao += 2;
+		indiceObjecto = procuraObjecto(linha, coluna);
+		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 		return 1;
 		break;
 	case GELO://jogo.jogadores[indiceCobra].tamanho--; tem de ser tratado no movecobra para se conseguir actualizar as posições da cobra no array...
 		jogo.jogadores[indiceCobra].comeuGelo = TRUE;
 		jogo.jogadores[indiceCobra].pontuacao -= 2;
+		indiceObjecto = procuraObjecto(linha, coluna);
+		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 		return 1;
 		break;
 	case GRANADA:jogo.jogadores[indiceCobra].estadoJogador = MORTO;
+		indiceObjecto = procuraObjecto(linha, coluna);
+		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 		return 0;
 		break;
 	case VODKA:jogo.jogadores[indiceCobra].estadoJogador = BEBADO;
 		jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_VODKA;
+		indiceObjecto = procuraObjecto(linha, coluna);
+		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 		return 1;
 		break;
 	case OLEO:jogo.jogadores[indiceCobra].estadoJogador = LEBRE;
 		jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_LEBRE;
+		indiceObjecto = procuraObjecto(linha, coluna);
+		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 		return 1;
 		break;
 	case COLA:jogo.jogadores[indiceCobra].estadoJogador = TARTARUGA;
 		jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_TARTARUGA;
+		indiceObjecto = procuraObjecto(linha, coluna);
+		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 		return 1;
 		break;
-	case O_VODKA:for(int i=0;i<jogo.config.N;i++)
+	case O_VODKA:for(int i=0;i<jogo.vagasJogadores;i++)
 					if (i != indiceCobra) {
 						jogo.jogadores[i].estadoJogador = BEBADO;
 						jogo.jogadores[i].duracaoEfeito = CICLOS_VODKA;
+						indiceObjecto = procuraObjecto(linha, coluna);
+						jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 					}
 				 return 1;
 		break;
-	case O_OLEO:for (int i = 0; i<jogo.config.N; i++)
+	case O_OLEO:for (int i = 0; i<jogo.vagasJogadores; i++)
 					if (i != indiceCobra) {
 						jogo.jogadores[i].estadoJogador = LEBRE;
 						jogo.jogadores[i].duracaoEfeito = CICLOS_LEBRE;
+						indiceObjecto = procuraObjecto(linha, coluna);
+						jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 					}
 				return 1;
 		break;
-	case O_COLA:for (int i = 0; i<jogo.config.N; i++)
+	case O_COLA:for (int i = 0; i<jogo.vagasJogadores; i++)
 					if (i != indiceCobra) {
 						jogo.jogadores[i].estadoJogador = TARTARUGA;
 						jogo.jogadores[i].duracaoEfeito = CICLOS_TARTARUGA;
+						indiceObjecto = procuraObjecto(linha, coluna);
+						jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 					}
 				return 1;
 		break;
@@ -547,51 +567,66 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 		if (tipoGerado < PROB_ALIMENTO) {
 			jogo.jogadores[indiceCobra].tamanho++;
 			jogo.jogadores[indiceCobra].porAparecer++;
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 		}
 		else if (tipoGerado < PROB_GELO) {
-			jogo.jogadores[indiceCobra].tamanho--;
 			jogo.jogadores[indiceCobra].comeuGelo = TRUE;
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 		}
 		else if (tipoGerado < PROB_OLEO) {
 			jogo.jogadores[indiceCobra].estadoJogador = LEBRE;
-			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_LEBRE;
+			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_LEBRE; 
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 		}
 		else if (tipoGerado < PROB_COLA) {
 			jogo.jogadores[indiceCobra].estadoJogador = TARTARUGA;
 			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_TARTARUGA;
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 		}
 		else if (tipoGerado < PROB_VODKA) {
 			jogo.jogadores[indiceCobra].estadoJogador = BEBADO;
 			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_VODKA;
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 		}
 		else if (tipoGerado < PROB_O_VODKA) {
-			for (int i = 0; i<jogo.config.N; i++)
+			for (int i = 0; i<jogo.vagasJogadores; i++)
 				if (i != indiceCobra) {
 					jogo.jogadores[i].estadoJogador = BEBADO;
 					jogo.jogadores[i].duracaoEfeito = CICLOS_VODKA;
 					}
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 						
 		}
 		else if (tipoGerado < PROB_O_OLEO) {
-			for (int i = 0; i<jogo.config.N; i++)
+			for (int i = 0; i<jogo.vagasJogadores; i++)
 				if (i != indiceCobra) {
 					jogo.jogadores[i].estadoJogador = LEBRE;
 					jogo.jogadores[i].duracaoEfeito = CICLOS_LEBRE;
 				}
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 		}
 		else if (tipoGerado < PROB_O_COLA) {
-			for (int i = 0; i<jogo.config.N; i++)
+			for (int i = 0; i<jogo.vagasJogadores; i++)
 				if (i != indiceCobra) {
 					jogo.jogadores[i].estadoJogador = TARTARUGA;
 					jogo.jogadores[i].duracaoEfeito = CICLOS_TARTARUGA;
 				}
+			indiceObjecto = procuraObjecto(linha, coluna);
+			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
 			return 1;
 		}
 		break;
@@ -675,13 +710,13 @@ int IniciaJogo(int pid, int tid) {
 		hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)moveCobras, (LPVOID)i, 0, &auxTid);
 	}
 
-	//hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gestorObjectos,NULL, 0, &tid);
+	hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)gestorObjectos,NULL, 0, &tid);
 	
 	
 	return 1;
 }
 
-int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAME]) {
+int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAME], ConfigObjecto objectosConfig[NUMTIPOOBJECTOS]) {
 
 	if ((jogo.estadoJogo != CRIACAOJOGO)) {
 		return AGORANAO;
@@ -693,6 +728,10 @@ int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAM
 	jogo.pidCriador = pid;
 	jogo.tidCriador = tid;
 	jogo.vagasJogadores = 0;
+	for (int i = 0; i < NUMTIPOOBJECTOS; i++) {
+		jogo.configObjectos[i].S = objectosConfig[i].S;
+		jogo.configObjectos[i].Tipo = objectosConfig[i].Tipo;
+	}
 	vistaPartilhaGeralServidor->colunas = param.C;
 	vistaPartilhaGeralServidor->linhas = param.L;
 	//preparar mapa
@@ -726,9 +765,10 @@ DWORD WINAPI gestorObjectos(LPVOID param) {
 	while (1) {
 		Sleep(SEGUNDO);
 		for (int i = 0; i < jogo.config.O; i++) {
-			jogo.objectosMapa[i].segundosRestantes--;
-			if (jogo.objectosMapa[i].segundosRestantes == 0) {
-				for (int i = 0; i < MAXCLIENTES; i++) {
+			if(jogo.objectosMapa[i].segundosRestantes>0)//Se for maior que 0 vamos decrementar os segundos que 
+				jogo.objectosMapa[i].segundosRestantes--;	//restam para desaparecer do mapa.
+			if (jogo.objectosMapa[i].segundosRestantes == 0) {//Se for igual a 0 quer dizer que ou foi comido ou vai 
+				for (int i = 0; i < MAXCLIENTES; i++) {			//desaparecer e tem de ser criado novamente.
 					WaitForSingleObject(hSemaforoMapaServidor, INFINITE);
 				}
 				vistaPartilhaGeralServidor->mapa[jogo.objectosMapa[i].linha][jogo.objectosMapa[i].coluna] = ESPACOVAZIO;
@@ -921,8 +961,38 @@ int procuraJogador(int pid, int tid, int jogador) {
 		}
 			
 	}
-	
 	return -1;
+}
+
+//retira o cliente da lista de clientes colocando o pid a 0
+//se o cliente estiver num jogo as cobras controladas por este morrem e o jogo continua
+void atendeSair(int pid, int tid) {
+	int indice1,indice2, indice;
+
+	indice = procuraCliente(pid, tid);
+	clientes[indice].pid = 0;
+	clientes[indice].tid = 0;
+	CloseHandle(clientes[indice].hEventoResposta);
+	CloseHandle(clientes[indice].hMemResposta);
+	CloseHandle(clientes[indice].hPipe);
+	UnmapViewOfFile(clientes[indice].vistaResposta);
+
+	indice1 = procuraJogador(pid, tid, JOGADOR1);
+	indice2 = procuraJogador(pid, tid, JOGADOR2);
+
+	if (indice1 != -1) {//meter o pid de forma a que o servidor saiba que aquela posição está vaga
+		jogo.jogadores[indice1].estadoJogador = MORTO;
+		jogo.cobrasVivas--;
+		if (acabouJogo() == 0) {
+			//notificaClientesFimDoJogo
+		}		
+	}else if (indice2 != -1) {//meter o pid de forma a que o servidor saiba que aquela posição está vaga
+		jogo.jogadores[indice2].estadoJogador = MORTO;
+		jogo.cobrasVivas--;
+		if (acabouJogo() == 0) {
+			//notificaClientesFimDoJogo
+		}
+	}
 }
 
 

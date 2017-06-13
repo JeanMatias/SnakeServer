@@ -84,7 +84,7 @@ void lePedidoDaFila(Pedido *param);
 void resetDadosJogo();
 void preparaMapaJogo();
 void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int tid, int jogador);
-int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAME]);
+int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAME],ConfigObjecto objectosConfig[NUMTIPOOBJECTOS]);
 int AssociaJogo(TCHAR username[SIZE_USERNAME], int pid, int tid, int jogador);
 int IniciaJogo(int pid, int tid);
 void mudaDirecaoJogador(int direcao, int pid, int tid, int jogador);
@@ -99,4 +99,5 @@ int criaMemoriaPartilhada(void);
 void notificaCliente(int indice, Resposta resp);
 int trataColisao(int linha, int coluna, int indiceCobra);
 int acabouJogo();
+void atendeSair(int pid, int tid);
 
