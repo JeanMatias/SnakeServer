@@ -24,6 +24,7 @@ typedef struct {
 	int linha;				//Posição no mapa
 	int coluna;				//Posição no mapa
 	int segundosRestantes;	//Segundos que restam ao objecto para este desaparecer
+	int apanhado;           //Flag para saber se objecto foi apanhado para caso tenha sido não tentar apaga-lo do mapa. 
 }Objecto;
 
 typedef struct {
@@ -45,6 +46,7 @@ typedef struct {
 	int pontuacao;
 	int direcao;
 	int estadoJogador;
+	int mudouEstado;
 	int posicoesCobra[MAX_COLUNAS * MAX_LINHAS][2];
 }Cobras;
 

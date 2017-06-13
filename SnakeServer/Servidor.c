@@ -169,20 +169,27 @@ DWORD WINAPI moveCobras(LPVOID param) {
 			case TARTARUGA:Sleep(LENTIDAO_TARTARUGA);
 				idCobraNoMapa = idCobraNoMapaDefeito + (TARTARUGA * 10);
 				jogo.jogadores[posArrayCobra].duracaoEfeito--;
-				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0)
+				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0) {
 					jogo.jogadores[posArrayCobra].estadoJogador = VIVO;
+					jogo.jogadores[posArrayCobra].mudouEstado = TRUE;
+				}
+					
 				break;
 			case LEBRE:Sleep(LENTIDAO_LEBRE);
 				idCobraNoMapa = idCobraNoMapaDefeito + (LEBRE * 10);
 				jogo.jogadores[posArrayCobra].duracaoEfeito--;
-				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0)
+				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0) {
 					jogo.jogadores[posArrayCobra].estadoJogador = VIVO;
+					jogo.jogadores[posArrayCobra].mudouEstado = TRUE;
+				}
 				break;
 			case BEBADO:Sleep(LENTIDAO_NORMAL);
 				idCobraNoMapa = idCobraNoMapaDefeito + (BEBADO * 10);
 				jogo.jogadores[posArrayCobra].duracaoEfeito--;
-				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0)
+				if (jogo.jogadores[posArrayCobra].duracaoEfeito == 0) {
 					jogo.jogadores[posArrayCobra].estadoJogador = VIVO;
+					jogo.jogadores[posArrayCobra].mudouEstado = TRUE;
+				}
 				break;
 			default:Sleep(LENTIDAO_NORMAL);
 				idCobraNoMapa = idCobraNoMapaDefeito;
@@ -190,6 +197,14 @@ DWORD WINAPI moveCobras(LPVOID param) {
 			}
 			for (int i = 0; i < MAXCLIENTES; i++) {
 				WaitForSingleObject(hSemaforoMapaServidor, INFINITE);
+			}
+			if (jogo.jogadores[posArrayCobra].mudouEstado == TRUE) {
+				for (int i = 0; i <= posArrayAux; i++) {
+					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
+					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
+					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+				}
+				jogo.jogadores[posArrayCobra].mudouEstado == FALSE;
 			}
 			switch (jogo.jogadores[posArrayCobra].direcao)
 			{
@@ -503,6 +518,7 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 		jogo.jogadores[indiceCobra].pontuacao += 2;
 		indiceObjecto = procuraObjecto(linha, coluna);
 		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+		jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 		return 1;
 		break;
 	case GELO://jogo.jogadores[indiceCobra].tamanho--; tem de ser tratado no movecobra para se conseguir actualizar as posições da cobra no array...
@@ -510,37 +526,47 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 		jogo.jogadores[indiceCobra].pontuacao -= 2;
 		indiceObjecto = procuraObjecto(linha, coluna);
 		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+		jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 		return 1;
 		break;
 	case GRANADA:jogo.jogadores[indiceCobra].estadoJogador = MORTO;
 		indiceObjecto = procuraObjecto(linha, coluna);
 		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+		//jogo.objectosMapa[indiceObjecto].apanhado = TRUE; //Não precisa da flag porque há necessidade de apagar o objeto do mapa.
 		return 0;
 		break;
 	case VODKA:jogo.jogadores[indiceCobra].estadoJogador = BEBADO;
 		jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_VODKA;
+		jogo.jogadores[indiceCobra].mudouEstado = TRUE;
 		indiceObjecto = procuraObjecto(linha, coluna);
 		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+		jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 		return 1;
 		break;
 	case OLEO:jogo.jogadores[indiceCobra].estadoJogador = LEBRE;
 		jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_LEBRE;
+		jogo.jogadores[indiceCobra].mudouEstado = TRUE;
 		indiceObjecto = procuraObjecto(linha, coluna);
 		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+		jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 		return 1;
 		break;
 	case COLA:jogo.jogadores[indiceCobra].estadoJogador = TARTARUGA;
 		jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_TARTARUGA;
+		jogo.jogadores[indiceCobra].mudouEstado = TRUE;
 		indiceObjecto = procuraObjecto(linha, coluna);
 		jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+		jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 		return 1;
 		break;
 	case O_VODKA:for(int i=0;i<jogo.vagasJogadores;i++)
 					if (i != indiceCobra) {
 						jogo.jogadores[i].estadoJogador = BEBADO;
 						jogo.jogadores[i].duracaoEfeito = CICLOS_VODKA;
+						jogo.jogadores[i].mudouEstado = TRUE;
 						indiceObjecto = procuraObjecto(linha, coluna);
 						jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+						jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 					}
 				 return 1;
 		break;
@@ -548,8 +574,10 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 					if (i != indiceCobra) {
 						jogo.jogadores[i].estadoJogador = LEBRE;
 						jogo.jogadores[i].duracaoEfeito = CICLOS_LEBRE;
+						jogo.jogadores[i].mudouEstado = TRUE;
 						indiceObjecto = procuraObjecto(linha, coluna);
 						jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+						jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 					}
 				return 1;
 		break;
@@ -557,8 +585,10 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 					if (i != indiceCobra) {
 						jogo.jogadores[i].estadoJogador = TARTARUGA;
 						jogo.jogadores[i].duracaoEfeito = CICLOS_TARTARUGA;
+						jogo.jogadores[i].mudouEstado = TRUE;
 						indiceObjecto = procuraObjecto(linha, coluna);
 						jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+						jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 					}
 				return 1;
 		break;
@@ -569,33 +599,41 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 			jogo.jogadores[indiceCobra].porAparecer++;
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 		}
 		else if (tipoGerado < PROB_GELO) {
 			jogo.jogadores[indiceCobra].comeuGelo = TRUE;
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 		}
 		else if (tipoGerado < PROB_OLEO) {
 			jogo.jogadores[indiceCobra].estadoJogador = LEBRE;
-			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_LEBRE; 
+			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_LEBRE;
+			jogo.jogadores[indiceCobra].mudouEstado = TRUE;
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 		}
 		else if (tipoGerado < PROB_COLA) {
 			jogo.jogadores[indiceCobra].estadoJogador = TARTARUGA;
 			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_TARTARUGA;
+			jogo.jogadores[indiceCobra].mudouEstado = TRUE;
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 		}
 		else if (tipoGerado < PROB_VODKA) {
 			jogo.jogadores[indiceCobra].estadoJogador = BEBADO;
 			jogo.jogadores[indiceCobra].duracaoEfeito = CICLOS_VODKA;
+			jogo.jogadores[indiceCobra].mudouEstado = TRUE;
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 		}
 		else if (tipoGerado < PROB_O_VODKA) {
@@ -603,9 +641,11 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 				if (i != indiceCobra) {
 					jogo.jogadores[i].estadoJogador = BEBADO;
 					jogo.jogadores[i].duracaoEfeito = CICLOS_VODKA;
+					jogo.jogadores[i].mudouEstado = TRUE;
 					}
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 						
 		}
@@ -614,9 +654,11 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 				if (i != indiceCobra) {
 					jogo.jogadores[i].estadoJogador = LEBRE;
 					jogo.jogadores[i].duracaoEfeito = CICLOS_LEBRE;
+					jogo.jogadores[i].mudouEstado = TRUE;
 				}
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 		}
 		else if (tipoGerado < PROB_O_COLA) {
@@ -624,9 +666,11 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 				if (i != indiceCobra) {
 					jogo.jogadores[i].estadoJogador = TARTARUGA;
 					jogo.jogadores[i].duracaoEfeito = CICLOS_TARTARUGA;
+					jogo.jogadores[i].mudouEstado = TRUE;
 				}
 			indiceObjecto = procuraObjecto(linha, coluna);
 			jogo.objectosMapa[indiceObjecto].segundosRestantes = 0;
+			jogo.objectosMapa[indiceObjecto].apanhado = TRUE;
 			return 1;
 		}
 		break;
@@ -771,7 +815,9 @@ DWORD WINAPI gestorObjectos(LPVOID param) {
 				for (int i = 0; i < MAXCLIENTES; i++) {			//desaparecer e tem de ser criado novamente.
 					WaitForSingleObject(hSemaforoMapaServidor, INFINITE);
 				}
-				vistaPartilhaGeralServidor->mapa[jogo.objectosMapa[i].linha][jogo.objectosMapa[i].coluna] = ESPACOVAZIO;
+				if (jogo.objectosMapa[i].apanhado != TRUE) {//Se não foi apanhado vamos meter a posicao do mapa livre
+					vistaPartilhaGeralServidor->mapa[jogo.objectosMapa[i].linha][jogo.objectosMapa[i].coluna] = ESPACOVAZIO;
+				}
 				geraObjecto(i);
 				SetEvent(hEventoMapaServidor);
 				ResetEvent(hEventoMapaServidor);
@@ -832,6 +878,7 @@ void geraObjecto(int indice) {
 	jogo.objectosMapa[indice].linha = posYGerada;
 	jogo.objectosMapa[indice].coluna = posXGerada;
 	jogo.objectosMapa[indice].segundosRestantes = jogo.configObjectos[jogo.objectosMapa[indice].Tipo - 1].S;
+	jogo.objectosMapa[indice].apanhado = FALSE;
 	vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] = jogo.objectosMapa[indice].Tipo;
 }
 
