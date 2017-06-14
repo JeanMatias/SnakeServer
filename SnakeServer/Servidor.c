@@ -9,6 +9,7 @@ int _tmain(int argc, LPTSTR argv[]) {
 	Resposta aux2;
 	int indice;
 	int resultado;
+	int auxTid;
 
 #ifdef UNICODE
 	_setmode(_fileno(stdin), _O_WTEXT);
@@ -22,6 +23,8 @@ int _tmain(int argc, LPTSTR argv[]) {
 		_tprintf(TEXT("ERRO"));
 		exit(-1);
 	}
+
+	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)criaPipe, NULL, 0, &auxTid);
 
 	resetDadosJogo();
 
@@ -38,7 +41,11 @@ int _tmain(int argc, LPTSTR argv[]) {
 								notificaCliente(indice, aux2);
 							}
 			break;
-		case REGISTACLIENTEREMTO:registaCliente(aux.pid, aux.tid, TRUE);
+		case REGISTACLIENTEREMTO:indice = registaCliente(aux.pid, aux.tid, TRUE);
+							if (indice != -1) {
+								aux2.resposta = SUCESSO;
+								notificaCliente(indice, aux2);
+							}
 			break;
 		case CRIARJOGO:indice = procuraCliente(aux.pid, aux.tid);
 			resultado = Cria_Jogo(aux.config, aux.pid, aux.tid, aux.username,aux.objectosConfig);
@@ -113,8 +120,6 @@ int _tmain(int argc, LPTSTR argv[]) {
 			break;
 		case SAIR:atendeSair(aux.pid, aux.tid);
 			break;
-		default:
-			break;
 		}
 	}
 	_gettch();
@@ -123,6 +128,105 @@ int _tmain(int argc, LPTSTR argv[]) {
 	fechaMemoriaPartilhadaGeral();
 	
 	return 0;
+}
+
+DWORD WINAPI atendeClienteRemoto(LPVOID param) {
+	HANDLE hPipe = (HANDLE)param;
+	DWORD n;
+	OVERLAPPED ovl;
+	HANDLE hEventoPipeLido;
+	Pedido aux;
+	BOOL primeiraLeitura = TRUE;
+	int indiceNoArrayDeClientes;
+	Resposta aux2;
+
+	hEventoPipeLido = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+	while (1) {
+		ZeroMemory(&ovl, sizeof(ovl));
+		ResetEvent(hEventoPipeLido);
+		ovl.hEvent = hEventoPipeLido;
+
+		ReadFile(hPipe, &aux, SIZEPEDIDO, &n, &ovl);
+		WaitForSingleObject(hEventoPipeLido, INFINITE);
+		
+		_tprintf(TEXT("No PIPE---> Pid:%d CodigoMSG:%d\n"), aux.pid, aux.codigoPedido);
+		switch (aux.codigoPedido)
+		{
+		case REGISTACLIENTEREMTO:pede_RegistarClienteRemoto(aux.pid, aux.tid);
+			break;
+		case CRIARJOGO:pede_CriaJogo(aux.config, aux.pid, aux.tid, aux.username, aux.objectosConfig);
+			break;
+		case ASSOCIAR_JOGADOR1:pede_AssociaJogo(aux.pid, aux.tid, aux.username, ASSOCIAR_JOGADOR1);
+			break;
+		case ASSOCIAR_JOGADOR2:pede_AssociaJogo(aux.pid, aux.tid, aux.username, ASSOCIAR_JOGADOR2);
+			break;
+		case INICIARJOGO:pede_IniciaJogo(aux.pid, aux.tid);
+			break;
+		case CIMA:
+		case BAIXO:
+		case ESQUERDA:
+		case DIREITA:
+			mudaDirecao(aux.codigoPedido, aux.pid, aux.tid, aux.jogador);
+			break;
+		case SAIR:pede_Sair(aux.pid, aux.tid);
+			return;
+			break;
+		}
+		Sleep(50);//:(
+		if (primeiraLeitura) {
+			primeiraLeitura = FALSE;
+			while (1) {
+				indiceNoArrayDeClientes = procuraCliente(aux.pid, aux.tid);
+				if (indiceNoArrayDeClientes != -1)
+					break;
+			}
+			/*while (1) {
+				WaitForSingleObject(clientes[indiceNoArrayDeClientes].hEventoResposta, INFINITE);
+				if (GetLastError() != ERROR_FILE_NOT_FOUND)
+					break;
+			}*/
+			WaitForSingleObject(clientes[indiceNoArrayDeClientes].hEventoResposta, INFINITE);
+			aux2.resposta = clientes[indiceNoArrayDeClientes].vistaResposta->resposta;
+			aux2.valor = clientes[indiceNoArrayDeClientes].vistaResposta->valor;
+
+			WriteFile(hPipe, &aux2, SIZERESPOSTA, &n, NULL);
+		}
+		else {
+			WaitForSingleObject(clientes[indiceNoArrayDeClientes].hEventoResposta, INFINITE);
+			aux2.resposta = clientes[indiceNoArrayDeClientes].vistaResposta->resposta;
+			aux2.valor = clientes[indiceNoArrayDeClientes].vistaResposta->valor;
+
+			WriteFile(hPipe, &aux2, SIZERESPOSTA, &n, NULL);
+		}	
+		
+	}
+}
+
+
+DWORD WINAPI criaPipe(LPVOID param) {
+	HANDLE hPipeAux;
+	TCHAR aux[SIZE_PIPENAME];
+
+	//concatenar pid com nome da memoria para ficar com um nome unico
+	_stprintf_s(aux, SIZE_PIPENAME, PIPE_ATENDE, TEXT("."));
+	while (1) {
+		// Criar pipe
+		hPipeAux = CreateNamedPipe(aux, PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED, PIPE_WAIT | PIPE_TYPE_MESSAGE
+			| PIPE_READMODE_MESSAGE, MAXCLIENTES, SIZEPEDIDO, SIZEPEDIDO, INFINITE, NULL);
+		if (hPipeAux == INVALID_HANDLE_VALUE) {
+			_tperror(TEXT("Erro na ligação ao leitor!!!!!!!!!!"));
+			exit(-1);
+		}
+
+		_tprintf(TEXT("[SERVIDOR] Espera ligação de um cliente Pipe ATENDE....(ConnectNamedPipe) \n"));
+		if (!ConnectNamedPipe(hPipeAux, NULL)) {
+			_tperror(TEXT("Erro na ligação ao leitor!"));
+			exit(-1);
+		}
+
+		CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)atendeClienteRemoto, (LPVOID)hPipeAux, 0, NULL);
+	}
 }
 
 //Mete dados do jogo para ser possivel aceitar pedidos de criação de jogo.
@@ -134,25 +238,25 @@ void resetDadosJogo() {
 
 void lePedidoDaFila(Pedido *param){
 
-	WaitForSingleObject(hPodeLerPedidoServidor, INFINITE);
+	WaitForSingleObject(hPodeLerPedido, INFINITE);
 
-	param->pid = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].pid;
-	param->tid = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].tid;
-	param->jogador = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].jogador;
-	param->codigoPedido = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].codigoPedido;
-	param->config = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].config;
-	_tcscpy_s(param->username , SIZE_USERNAME, vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].username);
+	param->pid = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].pid;
+	param->tid = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].tid;
+	param->jogador = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].jogador;
+	param->codigoPedido = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].codigoPedido;
+	param->config = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].config;
+	_tcscpy_s(param->username , SIZE_USERNAME, vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].username);
 	for (int i = 0; i < NUMTIPOOBJECTOS; i++)
-		param->objectosConfig[i] = vistaPartilhaGeralServidor->fila.pedidos[vistaPartilhaGeralServidor->fila.frente].objectosConfig[i];
+		param->objectosConfig[i] = vistaPartilhaGeral->fila.pedidos[vistaPartilhaGeral->fila.frente].objectosConfig[i];
 
-	vistaPartilhaGeralServidor->fila.frente++;
+	vistaPartilhaGeral->fila.frente++;
 
 	//chegou ao fim da fila temos de voltar a por desde o inicio da fila
-	if (vistaPartilhaGeralServidor->fila.frente == MAX_PEDIDOS) {
-		vistaPartilhaGeralServidor->fila.frente = 0;
+	if (vistaPartilhaGeral->fila.frente == MAX_PEDIDOS) {
+		vistaPartilhaGeral->fila.frente = 0;
 	}
 
-	ReleaseSemaphore(hPodeEscreverPedidoServidor, 1, NULL);
+	ReleaseSemaphore(hPodeEscreverPedido, 1, NULL);
 }
 
 /*----------------------------------------------------------------- */
@@ -196,15 +300,15 @@ DWORD WINAPI moveCobras(LPVOID param) {
 				break;
 			}
 			for (int i = 0; i < MAXCLIENTES; i++) {
-				WaitForSingleObject(hSemaforoMapaServidor, INFINITE);
+				WaitForSingleObject(hSemaforoMapa, INFINITE);
 			}
 			if (jogo.jogadores[posArrayCobra].mudouEstado == TRUE) {
 				for (int i = 0; i <= posArrayAux; i++) {
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 				}
-				jogo.jogadores[posArrayCobra].mudouEstado == FALSE;
+				jogo.jogadores[posArrayCobra].mudouEstado = FALSE;
 			}
 			switch (jogo.jogadores[posArrayCobra].direcao)
 			{
@@ -217,26 +321,26 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha-1;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
-					vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
 					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
 						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
 						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
-						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 						jogo.jogadores[posArrayCobra].tamanho--;
 					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
 					//meter o id da cobra no lugar antido da cebeça sem a direção
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z+1][0];
@@ -250,11 +354,11 @@ DWORD WINAPI moveCobras(LPVOID param) {
 						}
 						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
 					}
-					if (vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] != ESPACOVAZIO) {
+					if (vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] != ESPACOVAZIO) {
 						if (trataColisao(auxLinha - 1, auxColuna, posArrayCobra)) {
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha - 1;
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-							vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
+							vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
 						}
 						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
 							jogo.cobrasVivas--;
@@ -262,7 +366,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 								for (int i = 0; i <= posArrayAux; i++) {
 									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
 									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
-									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+									vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 								}
 							}
 							else {}//enviar pontuações aos clientes ligados 
@@ -271,7 +375,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					else {
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha - 1;
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-						vistaPartilhaGeralServidor->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
+						vistaPartilhaGeral->mapa[auxLinha - 1][auxColuna] = idCobraNoMapa + CIMA;
 					}							
 				}					
 				break;
@@ -284,26 +388,26 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
-					vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
 					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
 						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
 						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
-						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 						jogo.jogadores[posArrayCobra].tamanho--;
 					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
 					//meter o id da cobra no lugar antido da cebeça sem a direção
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
@@ -317,11 +421,11 @@ DWORD WINAPI moveCobras(LPVOID param) {
 						}
 						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
 					}
-					if (vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] != ESPACOVAZIO) {
+					if (vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] != ESPACOVAZIO) {
 						if (trataColisao(auxLinha + 1, auxColuna, posArrayCobra)) {
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-							vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
+							vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
 						}
 						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
 							jogo.cobrasVivas--;
@@ -329,7 +433,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 								for (int i = 0; i <= posArrayAux; i++) {
 									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
 									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
-									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+									vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 								}
 							}
 							else {}//enviar pontuações aos clientes ligados 
@@ -338,7 +442,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					else {
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha + 1;
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna;
-						vistaPartilhaGeralServidor->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
+						vistaPartilhaGeral->mapa[auxLinha + 1][auxColuna] = idCobraNoMapa + BAIXO;
 					}
 				}
 				break;
@@ -351,26 +455,26 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
 					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
 						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
 						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
-						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 						jogo.jogadores[posArrayCobra].tamanho--;
 					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
 					//meter o id da cobra no lugar antido da cebeça sem a direção
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
@@ -384,11 +488,11 @@ DWORD WINAPI moveCobras(LPVOID param) {
 						}
 						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
 					}
-					if (vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] != ESPACOVAZIO) {
+					if (vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] != ESPACOVAZIO) {
 						if (trataColisao(auxLinha, auxColuna - 1, posArrayCobra)) {
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
-							vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
+							vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
 						}
 						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
 							jogo.cobrasVivas--;
@@ -396,7 +500,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 								for (int i = 0; i <= posArrayAux; i++) {
 									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
 									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
-									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+									vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 								}
 							}
 							else {}//enviar pontuações aos clientes ligados 
@@ -405,7 +509,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					else {
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna - 1;
-						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna - 1] = idCobraNoMapa + ESQUERDA;
 					}
 				}
 				break;
@@ -418,26 +522,26 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 					jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
 					jogo.jogadores[posArrayCobra].porAparecer--;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
 				}
 				else {
 					posArrayAux = jogo.jogadores[posArrayCobra].tamanho - 1;
 					//Apagar a cauda do mapa 
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[0][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[0][1];
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 					if (jogo.jogadores[posArrayCobra].comeuGelo == TRUE) {//se comeu gelo na iteração anterior apaga duas posições
 						auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[1][0];
 						auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[1][1];
-						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 						jogo.jogadores[posArrayCobra].tamanho--;
 					}
 					//Buscar a posição da cabeça
 					auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0];
 					auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1];
 					//meter o id da cobra no lugar antido da cebeça sem a direção
-					vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = idCobraNoMapa;
+					vistaPartilhaGeral->mapa[auxLinha][auxColuna] = idCobraNoMapa;
 					//Mover todas as posições da cobra no array sobrepondo as antigas
 					for (int z = 0; z < posArrayAux; z++) {
 						jogo.jogadores[posArrayCobra].posicoesCobra[z][0] = jogo.jogadores[posArrayCobra].posicoesCobra[z + 1][0];
@@ -451,11 +555,11 @@ DWORD WINAPI moveCobras(LPVOID param) {
 						}
 						jogo.jogadores[posArrayCobra].comeuGelo = FALSE;
 					}
-					if (vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] != ESPACOVAZIO) {
+					if (vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] != ESPACOVAZIO) {
 						if (trataColisao(auxLinha , auxColuna + 1, posArrayCobra)) {
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 							jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
-							vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
+							vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
 						}
 						else {//cobra morreu, actualizar pontuação desta, detectar fim do jogo e apagar a cobra do mapa
 							jogo.cobrasVivas--;
@@ -463,7 +567,7 @@ DWORD WINAPI moveCobras(LPVOID param) {
 								for (int i = 0; i <= posArrayAux; i++) {
 									auxLinha = jogo.jogadores[posArrayCobra].posicoesCobra[i][0];
 									auxColuna = jogo.jogadores[posArrayCobra].posicoesCobra[i][1];
-									vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
+									vistaPartilhaGeral->mapa[auxLinha][auxColuna] = ESPACOVAZIO;
 								}
 							}
 							else {}//enviar pontuações aos clientes ligados 
@@ -472,15 +576,15 @@ DWORD WINAPI moveCobras(LPVOID param) {
 					else {
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][0] = auxLinha;
 						jogo.jogadores[posArrayCobra].posicoesCobra[posArrayAux][1] = auxColuna + 1;
-						vistaPartilhaGeralServidor->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
+						vistaPartilhaGeral->mapa[auxLinha][auxColuna + 1] = idCobraNoMapa + DIREITA;
 					}
 				}
 				break;
 			}
 		_tprintf(TEXT("**********ITERAÇÂO DO MAPA**********\n"));
-		SetEvent(hEventoMapaServidor);
-		ResetEvent(hEventoMapaServidor);
-		ReleaseSemaphore(hSemaforoMapaServidor, MAXCLIENTES, NULL);
+		SetEvent(hEventoMapa);
+		ResetEvent(hEventoMapa);
+		ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 	}
 
 	return 1;
@@ -509,7 +613,7 @@ int acabouJogo() {
 //devolve 1 se a cobra não morreu, devolve 0 se morreu e assim efectuar as devidas alterações no mapa e detectar fim de jogo
 int trataColisao(int linha,int coluna, int indiceCobra) {
 	int tipoGerado, indiceOutraCobra, indiceObjecto;
-	switch (vistaPartilhaGeralServidor->mapa[linha][coluna]) {
+	switch (vistaPartilhaGeral->mapa[linha][coluna]) {
 	case PAREDE:jogo.jogadores[indiceCobra].estadoJogador = MORTO;
 		return 0;
 		break;
@@ -675,9 +779,10 @@ int trataColisao(int linha,int coluna, int indiceCobra) {
 		}
 		break;
 	default://colisão com outros jogadores
-		indiceOutraCobra = vistaPartilhaGeralServidor->mapa[linha][coluna] / 100;
+		indiceOutraCobra = vistaPartilhaGeral->mapa[linha][coluna] / 100 - 1;
 		jogo.jogadores[indiceCobra].estadoJogador = MORTO;
-		jogo.jogadores[indiceOutraCobra].pontuacao += 10;
+		if(indiceOutraCobra!= indiceCobra)
+			jogo.jogadores[indiceOutraCobra].pontuacao += 10;
 		return 0;
 		break;
 	}
@@ -691,16 +796,16 @@ void criaCobra(TCHAR username[SIZE_USERNAME], int vaga, int pid, int tid, int jo
 	while (1) {
 		posXGerada = rand() % jogo.config.C;
 		posYGerada = rand() % jogo.config.L;
-		if (vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] == ESPACOVAZIO)
+		if (vistaPartilhaGeral->mapa[posYGerada][posXGerada] == ESPACOVAZIO)
 			break;
 	}
-	//posXGerada = posYGerada = 1;
+	
 	//Na posição 0 do array de posições ficam as Linhas e na 1 ficam as Colunas
 	jogo.jogadores[vaga].posicoesCobra[0][0] = posYGerada;
 	jogo.jogadores[vaga].posicoesCobra[0][1] = posXGerada;
 
 	idCobraMapa = (vaga + 1) * 100;
-	vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] = idCobraMapa;
+	vistaPartilhaGeral->mapa[posYGerada][posXGerada] = idCobraMapa;
 
 	dirGerada = (rand() % 3) + 1;
 	jogo.jogadores[vaga].direcao = dirGerada;
@@ -776,8 +881,8 @@ int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAM
 		jogo.configObjectos[i].S = objectosConfig[i].S;
 		jogo.configObjectos[i].Tipo = objectosConfig[i].Tipo;
 	}
-	vistaPartilhaGeralServidor->colunas = param.C;
-	vistaPartilhaGeralServidor->linhas = param.L;
+	vistaPartilhaGeral->colunas = param.C;
+	vistaPartilhaGeral->linhas = param.L;
 	//preparar mapa
 	preparaMapaJogo();
 
@@ -788,15 +893,15 @@ int Cria_Jogo(ConfigInicial param, int pid, int tid, TCHAR username[SIZE_USERNAM
 }
 
 void preparaMapaJogo() {
-	for (int z = 0; z < vistaPartilhaGeralServidor->colunas; z++) {
-		vistaPartilhaGeralServidor->mapa[0][z] = PAREDE;
-		vistaPartilhaGeralServidor->mapa[vistaPartilhaGeralServidor->linhas - 1][z] = PAREDE;
-		for (int j = 1; j < vistaPartilhaGeralServidor->linhas - 1; j++) {
-			if (z == 0 || z == vistaPartilhaGeralServidor->colunas - 1) {
-				vistaPartilhaGeralServidor->mapa[j][z] = PAREDE;
+	for (int z = 0; z < vistaPartilhaGeral->colunas; z++) {
+		vistaPartilhaGeral->mapa[0][z] = PAREDE;
+		vistaPartilhaGeral->mapa[vistaPartilhaGeral->linhas - 1][z] = PAREDE;
+		for (int j = 1; j < vistaPartilhaGeral->linhas - 1; j++) {
+			if (z == 0 || z == vistaPartilhaGeral->colunas - 1) {
+				vistaPartilhaGeral->mapa[j][z] = PAREDE;
 			}
 			else
-				vistaPartilhaGeralServidor->mapa[j][z] = ESPACOVAZIO;
+				vistaPartilhaGeral->mapa[j][z] = ESPACOVAZIO;
 		}
 	}
 }
@@ -813,15 +918,15 @@ DWORD WINAPI gestorObjectos(LPVOID param) {
 				jogo.objectosMapa[i].segundosRestantes--;	//restam para desaparecer do mapa.
 			if (jogo.objectosMapa[i].segundosRestantes == 0) {//Se for igual a 0 quer dizer que ou foi comido ou vai 
 				for (int i = 0; i < MAXCLIENTES; i++) {			//desaparecer e tem de ser criado novamente.
-					WaitForSingleObject(hSemaforoMapaServidor, INFINITE);
+					WaitForSingleObject(hSemaforoMapa, INFINITE);
 				}
 				if (jogo.objectosMapa[i].apanhado != TRUE) {//Se não foi apanhado vamos meter a posicao do mapa livre
-					vistaPartilhaGeralServidor->mapa[jogo.objectosMapa[i].linha][jogo.objectosMapa[i].coluna] = ESPACOVAZIO;
+					vistaPartilhaGeral->mapa[jogo.objectosMapa[i].linha][jogo.objectosMapa[i].coluna] = ESPACOVAZIO;
 				}
 				geraObjecto(i);
-				SetEvent(hEventoMapaServidor);
-				ResetEvent(hEventoMapaServidor);
-				ReleaseSemaphore(hSemaforoMapaServidor, MAXCLIENTES, NULL);
+				SetEvent(hEventoMapa);
+				ResetEvent(hEventoMapa);
+				ReleaseSemaphore(hSemaforoMapa, MAXCLIENTES, NULL);
 			}
 		}
 	}
@@ -847,7 +952,7 @@ void geraObjecto(int indice) {
 	while (1) {
 		posXGerada = rand() % jogo.config.C;
 		posYGerada = rand() % jogo.config.L;
-		if (vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] == ESPACOVAZIO)
+		if (vistaPartilhaGeral->mapa[posYGerada][posXGerada] == ESPACOVAZIO)
 			break;
 	}
 	//Gera um objecto dentro do intervalo de probabilidades dos objectos
@@ -879,24 +984,24 @@ void geraObjecto(int indice) {
 	jogo.objectosMapa[indice].coluna = posXGerada;
 	jogo.objectosMapa[indice].segundosRestantes = jogo.configObjectos[jogo.objectosMapa[indice].Tipo - 1].S;
 	jogo.objectosMapa[indice].apanhado = FALSE;
-	vistaPartilhaGeralServidor->mapa[posYGerada][posXGerada] = jogo.objectosMapa[indice].Tipo;
+	vistaPartilhaGeral->mapa[posYGerada][posXGerada] = jogo.objectosMapa[indice].Tipo;
 }
 
 int criaMemoriaPartilhada(void) {
 
 	//hFicheiro = CreateFile(NOME_FILE_MAP, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
-	hMemoriaGeral = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, SIZE_MEM_GERAL, NOME_MEM_GERAL);
+	hMemoria = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, SIZE_MEM_GERAL, NOME_MEM_GERAL);
 
-	vistaPartilhaGeralServidor = (MemGeral*)MapViewOfFile(hMemoriaGeral, FILE_MAP_ALL_ACCESS, 0, 0, SIZE_MEM_GERAL);
+	vistaPartilhaGeral = (MemGeral*)MapViewOfFile(hMemoria, FILE_MAP_ALL_ACCESS, 0, 0, SIZE_MEM_GERAL);
 
-	hEventoMapaServidor = CreateEvent(NULL, TRUE, FALSE, NOME_EVNT_MAPA);
-	hSemaforoMapaServidor = CreateSemaphore(NULL, MAXCLIENTES, MAXCLIENTES, NOME_SEM_MAPA);
+	hEventoMapa = CreateEvent(NULL, TRUE, FALSE, NOME_EVNT_MAPA);
+	hSemaforoMapa = CreateSemaphore(NULL, MAXCLIENTES, MAXCLIENTES, NOME_SEM_MAPA);
 
-	hPodeLerPedidoServidor = CreateSemaphore(NULL, 0, MAX_PEDIDOS, NOME_SEM_PODELER);
-	hPodeEscreverPedidoServidor = CreateSemaphore(NULL, MAX_PEDIDOS, MAX_PEDIDOS, NOME_SEM_PODESCRVR);
+	hPodeLerPedido = CreateSemaphore(NULL, 0, MAX_PEDIDOS, NOME_SEM_PODELER);
+	hPodeEscreverPedido = CreateSemaphore(NULL, MAX_PEDIDOS, MAX_PEDIDOS, NOME_SEM_PODESCRVR);
 
-	if (hMemoriaGeral == NULL || hEventoMapaServidor == NULL || hSemaforoMapaServidor == NULL || hPodeLerPedidoServidor == NULL || hPodeEscreverPedidoServidor == NULL) {
+	if (hMemoria == NULL || hEventoMapa == NULL || hSemaforoMapa == NULL || hPodeLerPedido == NULL || hPodeEscreverPedido == NULL) {
 		_tprintf(TEXT("[Erro] Criação de objectos do Windows(%d)\n"), GetLastError());
 		return -1;
 	}
@@ -905,8 +1010,8 @@ int criaMemoriaPartilhada(void) {
 		exit(-1);
 	}		
 
-	vistaPartilhaGeralServidor->fila.frente = 0;
-	vistaPartilhaGeralServidor->fila.tras = 0;
+	vistaPartilhaGeral->fila.frente = 0;
+	vistaPartilhaGeral->fila.tras = 0;
 	return 1;
 }
 

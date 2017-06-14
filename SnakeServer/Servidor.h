@@ -6,7 +6,7 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h> 
-#include "..\..\SnakeDLL\SnakeDLL\SnakeDLL.h"
+#include "SnakeDLL.h"
 
 typedef struct {
 	int pid;
@@ -70,18 +70,14 @@ typedef struct {
 Jogador *listaJogadores;//para usar mais tarde com o Registo
 Jogo jogo;
 Cliente clientes[MAXCLIENTES];
-HANDLE hMemoriaGeral;
-HANDLE hSemaforoMapaServidor;
-HANDLE hPodeLerPedidoServidor;
-HANDLE hPodeEscreverPedidoServidor;
-HANDLE hEventoMapaServidor;
-MemGeral *vistaPartilhaGeralServidor;
 
 /* ----------------------------------------------------- */
 /*  PROTOTIPO DE FUNÇÕES								 */
 /* ----------------------------------------------------- */
 DWORD WINAPI moveCobras(LPVOID param);
 DWORD WINAPI gestorObjectos(LPVOID param);
+DWORD WINAPI atendeClienteRemoto(LPVOID param);
+DWORD WINAPI criaPipe(LPVOID param);
 void lePedidoDaFila(Pedido *param);
 void resetDadosJogo();
 void preparaMapaJogo();
